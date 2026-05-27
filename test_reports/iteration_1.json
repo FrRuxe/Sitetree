@@ -1,0 +1,42 @@
+{
+  "summary": "Tested Jardin Intérieur frontend prototype (React/Tailwind, no backend). 21 functional checks executed across loading, sidebar, modes, chat flow, crisis detection (positive + accent-insensitive + ambiguity), emergency modal, settings modal (toggles, storage, Gemma 'Bientôt'), export download, incognito badge, evolution modal (stats + 5 fruits), new reflection, design (no pure white, #FAF9F6 bg), mobile burger + backdrop, and growth rules (leaf per msg, root every 3, daily=+flower, rumination>2=+fruit). 18/21 checks pass. CRITICAL bug found: localStorage persistence is broken — data is written correctly before reload but is overwritten with default state right after reload, before hydration restores it.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "App.js (persistence effects)",
+        "issue": "localStorage persistence is broken on reload. After sending messages, localStorage contains the full state, but after page reload it is immediately overwritten by the default initial state (messageCount:0, stats all zero, only the opener message). The tree therefore resets to 'Graine endormie' / 0 leaves at every reload. Confirmed by reading localStorage before reload (full state) vs after reload (defaults).",
+        "selector": "[data-testid=\"stat-leaves\"], [data-testid=\"tree-widget\"]",
+        "priority": "CRITICAL"
+      },
+      {
+        "component": "App.js / LocalSettingsPanel",
+        "issue": "Incognito state is not preserved across reloads (the persistence payload never stores incognitoMode). The hydration code checks `saved.incognitoMode` which is always undefined. Either incognito should be persisted (e.g. in a separate key, even when payload is gated) or this dead code branch should be removed.",
+        "selector": "[data-testid=\"toggle-incognito\"]",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Fix the persistence race condition in /app/frontend/src/App.js: the persist useEffect runs on mount with default state and overwrites the saved localStorage before/while the hydration effect's setStates take effect. Suggested fixes (any one): (a) guard the persist effect with a `hasHydrated` ref/state that flips to true only AFTER the hydration effect runs; (b) initialize useState lazily from loadFromStorage() so the first render already has the restored state (and skip the separate hydration effect); (c) merge hydration + persistence into a single reducer with explicit 'HYDRATE' action and only persist after hydration. Option (b) is the cleanest and also fixes the React 18 StrictMode double-mount aggravation.",
+    "Decide intended behaviour for incognito persistence: if incognito should survive reloads, persist it to a separate key that is always written; otherwise remove the dead `if (saved.incognitoMode)` branch in the hydration effect (line 74-78) since the payload never includes that field."
+  ],
+  "critical_code_review_comments": [
+    "App.js persistence: the persist useEffect (line 87) has no guard against running on first mount before hydration completes. Combined with React 18 StrictMode double effect-invocation, the default state is written to localStorage and read back by hydration, wiping the user's tree. Add a `didHydrate` ref or move state init into useState lazy initializer.",
+    "App.js stores message objects with stable IDs based on Date.now() in localStorage; on hydrate the IDs can collide with new message timestamps but it is acceptable for now (no React key issue observed in tests).",
+    "LocalSettingsPanel: `customMemory` is local component state — toggling it has no effect on the rest of the app, which is fine for the prototype but may be misleading.",
+    "Sidebar uses inline styles with hover handlers via onMouseEnter/onMouseLeave for the emergency button instead of Tailwind hover classes; works but inconsistent with the rest of the codebase.",
+    "ChatInput uses `background-color: rgba(255,255,255,0.45)` which is technically pure white with alpha; the brief asks for no pure white. The visible result is still cream over #FAF9F6 so the visual rule is respected, but if strictly enforced, base on a sage-tinted off-white."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only prototype)", "frontend": "~86% (18/21 functional checks)"},
+  "test_credentials": "N/A — no auth in this prototype",
+  "seed_data_creation": "None — pure frontend mock; localStorage cleared between scenarios.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All UI flows work as designed EXCEPT localStorage persistence on reload. Crisis detection (positive cases: 'je veux en finir', 'envie de disparaitre'), accent insensitivity, false-positive avoidance ('je vais mal' does NOT trigger), all 4 modes, growth rules (leaves+1 per msg, roots on count%3==0, flowers in daily, fruits in rumination when count>2), all modals (emergency / settings / evolution), export download (.json), incognito badge, mobile burger+backdrop, page bg rgb(250,249,246) are all verified passing. After fixing the persistence bug, the only remaining check is re-verifying: (1) reload preserves messages + stats + selectedMode + storageMode, (2) tree stage updates correctly with cumulative messages across sessions, (3) incognito behaviour with the new hydration guard.",
+  "rca_of_the_issue": "Bug: localStorage persistence reset on reload. Reproduction: 1) clear localStorage, 2) reload, 3) send any message — localStorage now contains correct state, 4) reload — localStorage is now back to default empty state and UI shows 0 leaves / 'Graine endormie'. RCA: in App.js two useEffect hooks coexist — hydration with deps [] and persistence with deps [messages,...]. On mount React commits the initial render with DEFAULT state and runs effects in declaration order. Hydration reads localStorage and schedules setStates, but the persistence effect in the SAME commit then writes the current (still-default) state to localStorage, overwriting it. In React 18 StrictMode the effects fire twice in dev, making the hydration's restored state visible only momentarily before the next persistence effect run can re-save it; the test shows the final localStorage contains only the initial opener message. Mitigation: gate the persistence effect with a `didHydrate` ref that flips to true at the END of the hydration effect, OR initialize useState lazily directly from loadFromStorage() and drop the hydration effect entirely (recommended)."
+}

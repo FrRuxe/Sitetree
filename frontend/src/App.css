@@ -1,0 +1,7 @@
+/* Styles spécifiques App — voir index.css pour le design system */
+
+.App {
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+}
