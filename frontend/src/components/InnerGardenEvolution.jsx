@@ -1,4 +1,5 @@
 import { X, Leaf, Sprout, Flower2, Apple } from "lucide-react";
+import { InnerTreeSvg } from "./InnerTreeSvg";
 import { MOCK_THEMES, MOCK_FRUITS, SOFT_MICROCOPY } from "../lib/responses";
 
 const StatBlock = ({ icon: Icon, value, label, testid }) => (
@@ -28,30 +29,42 @@ export const InnerGardenEvolution = ({ treeStats, recentFruits, onClose }) => {
                 style={{ backgroundColor: "#FAF9F6" }}
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* Header */}
-                <div
-                    className="sticky top-0 z-10 flex items-center justify-between px-6 py-5 border-b border-stone-200/70"
-                    style={{ backgroundColor: "#FAF9F6" }}
+                {/* Close */}
+                <button
+                    onClick={onClose}
+                    data-testid="evolution-close"
+                    className="absolute top-4 right-4 z-20 p-1.5 rounded-full text-stone-500 hover:bg-stone-200/50 bg-stone-50/80 backdrop-blur"
+                    aria-label="Fermer"
                 >
-                    <div>
-                        <p className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui">
-                            Mon évolution
-                        </p>
-                        <h2 className="font-serif-reading text-2xl text-stone-800 mt-0.5">
-                            {treeStats.stage}
-                        </h2>
-                        <p className="text-sm text-stone-500 mt-0.5 font-sans-ui">
-                            Saison émotionnelle · {treeStats.season}
-                        </p>
+                    <X className="w-4 h-4" />
+                </button>
+
+                {/* Hero arbre */}
+                <div
+                    className="relative px-6 pt-8 pb-4"
+                    style={{
+                        background:
+                            "linear-gradient(180deg, rgba(143, 151, 121, 0.10) 0%, rgba(250, 249, 246, 0) 100%)",
+                    }}
+                >
+                    <p className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui text-center">
+                        Mon évolution
+                    </p>
+                    <div className="mx-auto w-56 h-64 md:w-72 md:h-80 mt-2">
+                        <InnerTreeSvg
+                            stageKey={treeStats.stageKey}
+                            leaves={treeStats.leaves}
+                            flowers={treeStats.flowers}
+                            fruits={treeStats.fruits}
+                            className="w-full h-full"
+                        />
                     </div>
-                    <button
-                        onClick={onClose}
-                        data-testid="evolution-close"
-                        className="p-1.5 rounded-full text-stone-500 hover:bg-stone-200/50"
-                        aria-label="Fermer"
-                    >
-                        <X className="w-4 h-4" />
-                    </button>
+                    <h2 className="font-serif-reading text-2xl md:text-3xl text-stone-800 text-center mt-2">
+                        {treeStats.stage}
+                    </h2>
+                    <p className="text-sm text-stone-500 mt-1 font-sans-ui text-center">
+                        Saison émotionnelle · {treeStats.season}
+                    </p>
                 </div>
 
                 <div className="px-6 py-6 space-y-6">

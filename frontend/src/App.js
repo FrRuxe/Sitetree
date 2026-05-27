@@ -277,8 +277,10 @@ function App() {
                     messages={messages}
                     isTyping={isTyping}
                     mode={selectedMode}
+                    treeStats={treeStats}
                     onOpenSidebar={() => setSidebarOpen(true)}
                     onOpenEmergency={() => setShowEmergencyCard(true)}
+                    onOpenEvolution={() => setShowEvolution(true)}
                 />
                 <ChatInput
                     value={inputValue}

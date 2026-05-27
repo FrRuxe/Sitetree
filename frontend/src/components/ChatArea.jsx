@@ -1,14 +1,17 @@
 import { useEffect, useRef } from "react";
 import { Menu, Lock } from "lucide-react";
 import { MessageBubble, TypingIndicator } from "./MessageBubble";
+import { InnerTreeSvg } from "./InnerTreeSvg";
 import { MODE_LABELS, MODE_SUBTITLES } from "../lib/responses";
 
 export const ChatArea = ({
     messages,
     isTyping,
     mode,
+    treeStats,
     onOpenSidebar,
     onOpenEmergency,
+    onOpenEvolution,
 }) => {
     const scrollRef = useRef(null);
 
@@ -16,6 +19,10 @@ export const ChatArea = ({
         const el = scrollRef.current;
         if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     }, [messages, isTyping]);
+
+    // Affichage "hero" de l'arbre : tant que la conversation est très courte,
+    // on lui donne toute la place pour qu'on ait vraiment envie de le regarder grandir.
+    const isEarly = messages.length <= 1 && !isTyping;
 
     return (
         <div className="flex-1 flex flex-col min-w-0 min-h-0" data-testid="chat-area">
@@ -53,6 +60,24 @@ export const ChatArea = ({
                         {MODE_SUBTITLES[mode]}
                     </p>
                 </div>
+
+                {/* Mini-arbre en haut à droite, toujours visible quand la conversation continue */}
+                {!isEarly && (
+                    <button
+                        onClick={onOpenEvolution}
+                        data-testid="chat-tree-mini"
+                        className="hidden md:flex w-16 h-20 shrink-0 -mt-2 transition-transform hover:scale-105"
+                        aria-label="Voir mon évolution"
+                    >
+                        <InnerTreeSvg
+                            stageKey={treeStats.stageKey}
+                            leaves={treeStats.leaves}
+                            flowers={treeStats.flowers}
+                            fruits={treeStats.fruits}
+                            breathe={false}
+                        />
+                    </button>
+                )}
             </header>
 
             {/* Messages */}
@@ -62,6 +87,29 @@ export const ChatArea = ({
                 data-testid="messages-container"
             >
                 <div className="max-w-3xl mx-auto py-6 space-y-7">
+                    {/* Arbre hero — visible quand la conversation démarre */}
+                    {isEarly && (
+                        <button
+                            onClick={onOpenEvolution}
+                            data-testid="chat-tree-hero"
+                            className="block w-full mx-auto mb-4 animate-soft-in"
+                            aria-label="Voir mon évolution"
+                        >
+                            <div className="mx-auto w-56 h-64 md:w-72 md:h-80">
+                                <InnerTreeSvg
+                                    stageKey={treeStats.stageKey}
+                                    leaves={treeStats.leaves}
+                                    flowers={treeStats.flowers}
+                                    fruits={treeStats.fruits}
+                                    className="w-full h-full"
+                                />
+                            </div>
+                            <p className="text-center text-sm text-stone-500 italic font-serif-reading mt-2">
+                                {treeStats.stage} · {treeStats.season}
+                            </p>
+                        </button>
+                    )}
+
                     {messages.map((m) => (
                         <MessageBubble
                             key={m.id}
