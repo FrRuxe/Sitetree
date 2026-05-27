@@ -54,3 +54,10 @@ coverage/
 .eslintcache
 .tmp/
 .tmp.*
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
