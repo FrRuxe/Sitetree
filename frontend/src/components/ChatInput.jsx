@@ -40,7 +40,7 @@ export const ChatInput = ({
                 )}
                 <div
                     className="relative rounded-3xl border border-stone-200 transition-all duration-200 focus-within:border-stone-300 focus-within:shadow-sm"
-                    style={{ backgroundColor: "rgba(255, 255, 255, 0.45)" }}
+                    style={{ backgroundColor: "rgba(240, 235, 225, 0.35)" }}
                 >
                     <textarea
                         ref={textareaRef}

@@ -21,6 +21,7 @@ import {
 } from "@/lib/treeLogic";
 
 const STORAGE_KEY = "jardin-interieur-state-v1";
+const INCOGNITO_KEY = "jardin-interieur-incognito-v1";
 
 const DEFAULT_STATS = {
     leaves: 0,
@@ -48,16 +49,35 @@ const loadFromStorage = () => {
     }
 };
 
-function App() {
-    const [storageMode, setStorageMode] = useState("local"); // "local" | "cloud"
-    const [incognitoMode, setIncognitoMode] = useState(false);
+const loadIncognito = () => {
+    try {
+        return localStorage.getItem(INCOGNITO_KEY) === "1";
+    } catch {
+        return false;
+    }
+};
 
-    const [selectedMode, setSelectedMode] = useState("free");
-    const [messages, setMessages] = useState(() => createInitialMessages("free"));
+function App() {
+    // Hydratation paresseuse : on évite toute race condition entre les effets.
+    const savedRef = useRef(loadFromStorage());
+    const saved = savedRef.current;
+
+    const [storageMode, setStorageMode] = useState(() => saved?.storageMode || "local");
+    const [incognitoMode, setIncognitoMode] = useState(() => loadIncognito());
+
+    const [selectedMode, setSelectedMode] = useState(() => saved?.selectedMode || "free");
+    const [messages, setMessages] = useState(() =>
+        saved?.messages?.length ? saved.messages : createInitialMessages(saved?.selectedMode || "free")
+    );
     const [inputValue, setInputValue] = useState("");
     const [isTyping, setIsTyping] = useState(false);
-    const [messageCount, setMessageCount] = useState(0);
-    const [stats, setStats] = useState(DEFAULT_STATS);
+    const [messageCount, setMessageCount] = useState(() =>
+        typeof saved?.messageCount === "number" ? saved.messageCount : 0
+    );
+    const [stats, setStats] = useState(() => ({
+        ...DEFAULT_STATS,
+        ...(saved?.stats || {}),
+    }));
 
     const [showEmergencyCard, setShowEmergencyCard] = useState(false);
     const [showLocalSettings, setShowLocalSettings] = useState(false);
@@ -67,23 +87,7 @@ function App() {
     const [growthToast, setGrowthToast] = useState(null);
     const toastTimerRef = useRef(null);
 
-    // Hydrate depuis localStorage au mount
-    useEffect(() => {
-        const saved = loadFromStorage();
-        if (!saved) return;
-        if (saved.incognitoMode) {
-            // Incognito = on ne restaure pas la conversation, mais on garde le mode incognito
-            setIncognitoMode(true);
-            return;
-        }
-        if (saved.messages?.length) setMessages(saved.messages);
-        if (typeof saved.messageCount === "number") setMessageCount(saved.messageCount);
-        if (saved.stats) setStats({ ...DEFAULT_STATS, ...saved.stats });
-        if (saved.selectedMode) setSelectedMode(saved.selectedMode);
-        if (saved.storageMode) setStorageMode(saved.storageMode);
-    }, []);
-
-    // Persist (sauf en incognito)
+    // Persistance de l'état principal — uniquement quand l'incognito est OFF.
     useEffect(() => {
         if (incognitoMode) return;
         try {
@@ -96,9 +100,22 @@ function App() {
             };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
         } catch {
-            // silencieux : on n'effraie pas l'utilisateur
+            // silencieux
         }
     }, [messages, messageCount, stats, selectedMode, storageMode, incognitoMode]);
+
+    // Persistance séparée du choix incognito (toujours respectée)
+    useEffect(() => {
+        try {
+            if (incognitoMode) {
+                localStorage.setItem(INCOGNITO_KEY, "1");
+            } else {
+                localStorage.removeItem(INCOGNITO_KEY);
+            }
+        } catch {
+            // silencieux
+        }
+    }, [incognitoMode]);
 
     const treeMeta = getStageFromCount(messageCount);
     const treeStats = {
