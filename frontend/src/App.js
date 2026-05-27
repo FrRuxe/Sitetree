@@ -8,6 +8,7 @@ import { EmergencySupportCard } from "@/components/EmergencySupportCard";
 import { LocalSettingsPanel } from "@/components/LocalSettingsPanel";
 import { InnerGardenEvolution } from "@/components/InnerGardenEvolution";
 import { GrowthToast } from "@/components/GrowthToast";
+import { OnboardingCategories } from "@/components/OnboardingCategories";
 
 import {
     MODE_RESPONSES,
@@ -18,12 +19,13 @@ import {
     getStageFromCount,
     detectCrisis,
     computeGrowth,
+    aggregateStats,
 } from "@/lib/treeLogic";
 
-const STORAGE_KEY = "jardin-interieur-state-v1";
+const STORAGE_KEY = "jardin-interieur-state-v2";
 const INCOGNITO_KEY = "jardin-interieur-incognito-v1";
 
-const DEFAULT_STATS = {
+const DEFAULT_TRUNK = {
     leaves: 0,
     roots: 0,
     flowers: 0,
@@ -58,7 +60,6 @@ const loadIncognito = () => {
 };
 
 function App() {
-    // Hydratation paresseuse : on évite toute race condition entre les effets.
     const savedRef = useRef(loadFromStorage());
     const saved = savedRef.current;
 
@@ -74,11 +75,15 @@ function App() {
     const [messageCount, setMessageCount] = useState(() =>
         typeof saved?.messageCount === "number" ? saved.messageCount : 0
     );
-    const [stats, setStats] = useState(() => ({
-        ...DEFAULT_STATS,
-        ...(saved?.stats || {}),
+    const [trunk, setTrunk] = useState(() => ({
+        ...DEFAULT_TRUNK,
+        ...(saved?.trunk || {}),
     }));
+    const [categories, setCategories] = useState(() => saved?.categories || null);
+    const [selectedCategoryId, setSelectedCategoryId] = useState(null);
 
+    const [showOnboarding, setShowOnboarding] = useState(() => !saved?.categories);
+    const [onboardingIsFirstTime, setOnboardingIsFirstTime] = useState(() => !saved?.categories);
     const [showEmergencyCard, setShowEmergencyCard] = useState(false);
     const [showLocalSettings, setShowLocalSettings] = useState(false);
     const [showEvolution, setShowEvolution] = useState(false);
@@ -87,14 +92,15 @@ function App() {
     const [growthToast, setGrowthToast] = useState(null);
     const toastTimerRef = useRef(null);
 
-    // Persistance de l'état principal — uniquement quand l'incognito est OFF.
+    // Persistance de l'état principal (hors incognito)
     useEffect(() => {
         if (incognitoMode) return;
         try {
             const payload = {
                 messages,
                 messageCount,
-                stats,
+                trunk,
+                categories,
                 selectedMode,
                 storageMode,
             };
@@ -102,9 +108,9 @@ function App() {
         } catch {
             // silencieux
         }
-    }, [messages, messageCount, stats, selectedMode, storageMode, incognitoMode]);
+    }, [messages, messageCount, trunk, categories, selectedMode, storageMode, incognitoMode]);
 
-    // Persistance séparée du choix incognito (toujours respectée)
+    // Persistance séparée du choix incognito
     useEffect(() => {
         try {
             if (incognitoMode) {
@@ -118,16 +124,18 @@ function App() {
     }, [incognitoMode]);
 
     const treeMeta = getStageFromCount(messageCount);
+    const aggregated = aggregateStats(trunk, categories);
     const treeStats = {
         ...treeMeta,
         stageKey: treeMeta.key,
-        ...stats,
+        ...aggregated,
+        trunk,
+        categories: categories || [],
     };
 
     const showGrowth = useCallback((events) => {
         if (!events?.length) return;
-        const msg = events[0];
-        setGrowthToast(msg);
+        setGrowthToast(events[0]);
         if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
         toastTimerRef.current = setTimeout(() => setGrowthToast(null), 3200);
     }, []);
@@ -141,6 +149,7 @@ function App() {
             role: "user",
             type: "text",
             text,
+            categoryId: selectedCategoryId || null,
         };
         setMessages((prev) => [...prev, userMsg]);
         setInputValue("");
@@ -148,14 +157,23 @@ function App() {
         const nextCount = messageCount + 1;
         setMessageCount(nextCount);
 
-        // Croissance arbre
-        const { newStats, growthEvents } = computeGrowth(stats, selectedMode, nextCount);
-        setStats(newStats);
-        showGrowth(growthEvents);
+        // Croissance arbre (par catégorie si tag, sinon tronc)
+        const result = computeGrowth(
+            trunk,
+            categories,
+            selectedMode,
+            nextCount,
+            selectedCategoryId
+        );
+        setTrunk(result.trunk);
+        if (result.categories) setCategories(result.categories);
+        showGrowth(result.growthEvents);
+
+        // Reset du chip après envoi
+        setSelectedCategoryId(null);
 
         // Détection de crise
         if (detectCrisis(text)) {
-            // Pause très courte pour la lisibilité
             setIsTyping(true);
             setTimeout(() => {
                 setIsTyping(false);
@@ -189,13 +207,12 @@ function App() {
                 },
             ]);
         }, delay);
-    }, [inputValue, messageCount, stats, selectedMode, showGrowth]);
+    }, [inputValue, messageCount, trunk, categories, selectedMode, selectedCategoryId, showGrowth]);
 
     const handleSelectMode = useCallback(
         (mode) => {
             if (mode === selectedMode) return;
             setSelectedMode(mode);
-            // Ajoute un message d'ouverture du nouveau mode
             setMessages((prev) => [
                 ...prev,
                 {
@@ -212,10 +229,22 @@ function App() {
 
     const handleNewReflection = useCallback(() => {
         setMessages(createInitialMessages(selectedMode));
-        // L'arbre ne meurt jamais : on conserve stats & messageCount.
         setInputValue("");
+        setSelectedCategoryId(null);
         setSidebarOpen(false);
     }, [selectedMode]);
+
+    const handleSaveCategories = useCallback((newCats) => {
+        setCategories(newCats);
+        setShowOnboarding(false);
+        setOnboardingIsFirstTime(false);
+    }, []);
+
+    const handleOpenCategoryEditor = useCallback(() => {
+        setOnboardingIsFirstTime(false);
+        setShowOnboarding(true);
+        setSidebarOpen(false);
+    }, []);
 
     const handleExport = useCallback(() => {
         try {
@@ -224,7 +253,8 @@ function App() {
                 selectedMode,
                 messages,
                 messageCount,
-                stats,
+                trunk,
+                categories,
             };
             const blob = new Blob([JSON.stringify(payload, null, 2)], {
                 type: "application/json",
@@ -240,7 +270,7 @@ function App() {
         } catch {
             // silencieux
         }
-    }, [selectedMode, messages, messageCount, stats]);
+    }, [selectedMode, messages, messageCount, trunk, categories]);
 
     const handleClearAll = useCallback(() => {
         const confirmed = window.confirm(
@@ -254,8 +284,11 @@ function App() {
         }
         setMessages(createInitialMessages(selectedMode));
         setMessageCount(0);
-        setStats(DEFAULT_STATS);
+        setTrunk(DEFAULT_TRUNK);
+        setCategories(null);
         setShowLocalSettings(false);
+        setOnboardingIsFirstTime(true);
+        setShowOnboarding(true);
     }, [selectedMode]);
 
     return (
@@ -268,6 +301,7 @@ function App() {
                 onOpenEmergency={() => setShowEmergencyCard(true)}
                 onOpenSettings={() => setShowLocalSettings(true)}
                 onOpenEvolution={() => setShowEvolution(true)}
+                onOpenCategoryEditor={handleOpenCategoryEditor}
                 isOpen={sidebarOpen}
                 onClose={() => setSidebarOpen(false)}
             />
@@ -289,6 +323,9 @@ function App() {
                     mode={selectedMode}
                     disabled={isTyping}
                     incognito={incognitoMode}
+                    categories={categories}
+                    selectedCategoryId={selectedCategoryId}
+                    onSelectCategory={setSelectedCategoryId}
                 />
             </main>
 
@@ -312,6 +349,16 @@ function App() {
                 <InnerGardenEvolution
                     treeStats={treeStats}
                     onClose={() => setShowEvolution(false)}
+                    onEditCategories={handleOpenCategoryEditor}
+                />
+            )}
+
+            {showOnboarding && (
+                <OnboardingCategories
+                    initialCategories={categories}
+                    onSave={handleSaveCategories}
+                    onClose={() => setShowOnboarding(false)}
+                    isFirstTime={onboardingIsFirstTime}
                 />
             )}
 

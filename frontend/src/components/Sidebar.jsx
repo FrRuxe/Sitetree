@@ -1,4 +1,4 @@
-import { Leaf, Plus, LifeBuoy, Settings, X } from "lucide-react";
+import { Leaf, Plus, LifeBuoy, Settings, X, Trees } from "lucide-react";
 import { ModeSelector } from "./ModeSelector";
 import { TreeWidget } from "./TreeWidget";
 
@@ -10,12 +10,12 @@ export const Sidebar = ({
     onOpenEmergency,
     onOpenSettings,
     onOpenEvolution,
+    onOpenCategoryEditor,
     isOpen,
     onClose,
 }) => {
     return (
         <>
-            {/* Backdrop mobile */}
             {isOpen && (
                 <div
                     className="fixed inset-0 bg-stone-900/30 backdrop-blur-sm z-30 md:hidden"
@@ -31,7 +31,6 @@ export const Sidebar = ({
                 }`}
                 style={{ backgroundColor: "#F0EBE1" }}
             >
-                {/* Header */}
                 <div className="px-5 pt-6 pb-4 flex items-start gap-3">
                     <div
                         className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
@@ -57,7 +56,6 @@ export const Sidebar = ({
                     </button>
                 </div>
 
-                {/* Nouvelle réflexion */}
                 <div className="px-4 pb-2">
                     <button
                         data-testid="new-reflection-btn"
@@ -69,7 +67,6 @@ export const Sidebar = ({
                     </button>
                 </div>
 
-                {/* Modes */}
                 <div className="px-3 py-3">
                     <ModeSelector
                         selectedMode={selectedMode}
@@ -77,8 +74,7 @@ export const Sidebar = ({
                     />
                 </div>
 
-                {/* Arbre */}
-                <div className="px-4 pb-4">
+                <div className="px-4 pb-3">
                     <TreeWidget
                         stage={treeStats.stage}
                         stageKey={treeStats.stageKey}
@@ -88,11 +84,22 @@ export const Sidebar = ({
                         roots={treeStats.roots}
                         flowers={treeStats.flowers}
                         fruits={treeStats.fruits}
+                        categories={treeStats.categories}
                         onOpenEvolution={onOpenEvolution}
                     />
                 </div>
 
-                {/* Footer */}
+                <div className="px-4 pb-2">
+                    <button
+                        data-testid="edit-categories-btn"
+                        onClick={onOpenCategoryEditor}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-stone-600 hover:bg-stone-200/40 transition-colors font-sans-ui"
+                    >
+                        <Trees className="w-4 h-4" style={{ color: "#8F9779" }} />
+                        Mes branches
+                    </button>
+                </div>
+
                 <div className="mt-auto px-4 pb-5 pt-2 space-y-1.5 border-t border-stone-200/70">
                     <button
                         data-testid="open-emergency-btn"

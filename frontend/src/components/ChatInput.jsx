@@ -1,6 +1,7 @@
 import { useRef, useEffect } from "react";
 import { ArrowUp, EyeOff } from "lucide-react";
 import { MODE_PLACEHOLDERS } from "../lib/responses";
+import { CategoryChips } from "./CategoryChips";
 
 export const ChatInput = ({
     value,
@@ -9,10 +10,12 @@ export const ChatInput = ({
     mode,
     disabled,
     incognito,
+    categories,
+    selectedCategoryId,
+    onSelectCategory,
 }) => {
     const textareaRef = useRef(null);
 
-    // Auto-resize doux
     useEffect(() => {
         const el = textareaRef.current;
         if (!el) return;
@@ -28,6 +31,7 @@ export const ChatInput = ({
     };
 
     const hasContent = value.trim().length > 0;
+    const activeCat = categories?.find((c) => c.id === selectedCategoryId);
 
     return (
         <div className="px-4 md:px-8 pb-5 pt-3" data-testid="chat-input-container">
@@ -38,9 +42,23 @@ export const ChatInput = ({
                         Mode incognito actif — rien n'est conservé.
                     </div>
                 )}
+
+                {categories && categories.length > 0 && (
+                    <CategoryChips
+                        categories={categories}
+                        selectedId={selectedCategoryId}
+                        onSelect={onSelectCategory}
+                    />
+                )}
+
                 <div
-                    className="relative rounded-3xl border border-stone-200 transition-all duration-200 focus-within:border-stone-300 focus-within:shadow-sm"
-                    style={{ backgroundColor: "rgba(240, 235, 225, 0.35)" }}
+                    className="relative rounded-3xl border transition-all duration-200 focus-within:shadow-sm"
+                    style={{
+                        backgroundColor: "rgba(240, 235, 225, 0.35)",
+                        borderColor: activeCat
+                            ? `${activeCat.color}80`
+                            : "rgba(214, 207, 194, 1)",
+                    }}
                 >
                     <textarea
                         ref={textareaRef}
@@ -49,7 +67,11 @@ export const ChatInput = ({
                         onChange={(e) => onChange(e.target.value)}
                         onKeyDown={handleKeyDown}
                         rows={1}
-                        placeholder={MODE_PLACEHOLDERS[mode]}
+                        placeholder={
+                            activeCat
+                                ? `À propos de ${activeCat.label}…`
+                                : MODE_PLACEHOLDERS[mode]
+                        }
                         disabled={disabled}
                         className="w-full resize-none bg-transparent px-5 py-4 pr-14 outline-none text-[15px] text-stone-800 placeholder:text-stone-400 font-sans-ui leading-relaxed disabled:opacity-50"
                         style={{ maxHeight: "200px" }}
@@ -64,7 +86,7 @@ export const ChatInput = ({
                                 : "opacity-0 scale-90 pointer-events-none"
                         }`}
                         style={{
-                            backgroundColor: "#8F9779",
+                            backgroundColor: activeCat ? activeCat.color : "#8F9779",
                             color: "#FAF9F6",
                         }}
                     >

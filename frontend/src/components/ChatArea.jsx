@@ -66,7 +66,7 @@ export const ChatArea = ({
                     <button
                         onClick={onOpenEvolution}
                         data-testid="chat-tree-mini"
-                        className="hidden md:flex w-16 h-20 shrink-0 -mt-2 transition-transform hover:scale-105"
+                        className="hidden md:flex w-20 h-24 shrink-0 -mt-2 transition-transform hover:scale-105"
                         aria-label="Voir mon évolution"
                     >
                         <InnerTreeSvg
@@ -74,6 +74,8 @@ export const ChatArea = ({
                             leaves={treeStats.leaves}
                             flowers={treeStats.flowers}
                             fruits={treeStats.fruits}
+                            categories={treeStats.categories}
+                            showLabels={false}
                             breathe={false}
                         />
                     </button>
@@ -95,12 +97,14 @@ export const ChatArea = ({
                             className="block w-full mx-auto mb-4 animate-soft-in"
                             aria-label="Voir mon évolution"
                         >
-                            <div className="mx-auto w-56 h-64 md:w-72 md:h-80">
+                            <div className="mx-auto w-72 h-80 md:w-96 md:h-[26rem]">
                                 <InnerTreeSvg
                                     stageKey={treeStats.stageKey}
                                     leaves={treeStats.leaves}
                                     flowers={treeStats.flowers}
                                     fruits={treeStats.fruits}
+                                    categories={treeStats.categories}
+                                    showLabels={true}
                                     className="w-full h-full"
                                 />
                             </div>

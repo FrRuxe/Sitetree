@@ -10,6 +10,7 @@ export const TreeWidget = ({
     roots,
     flowers,
     fruits,
+    categories,
     onOpenEvolution,
 }) => {
     return (
@@ -19,13 +20,14 @@ export const TreeWidget = ({
             className="w-full text-left rounded-2xl p-4 transition-colors hover:bg-stone-200/50 group"
             style={{ backgroundColor: "rgba(143, 151, 121, 0.10)" }}
         >
-            {/* Arbre en grand format dans la sidebar */}
-            <div className="w-full h-40 mb-3 flex items-end justify-center">
+            <div className="w-full h-44 mb-3 flex items-end justify-center">
                 <InnerTreeSvg
                     stageKey={stageKey}
                     leaves={leaves}
                     flowers={flowers}
                     fruits={fruits}
+                    categories={categories}
+                    showLabels={false}
                     className="w-full h-full"
                 />
             </div>
@@ -39,7 +41,6 @@ export const TreeWidget = ({
                 </p>
                 <p className="text-xs text-stone-500 mt-0.5 font-sans-ui">{season}</p>
 
-                {/* Barre de progression */}
                 <div className="mt-2 h-1 w-full rounded-full bg-stone-200/70 overflow-hidden">
                     <div
                         className="h-full rounded-full transition-all duration-700"
@@ -51,7 +52,6 @@ export const TreeWidget = ({
                 </div>
             </div>
 
-            {/* Stats compactes */}
             <div className="mt-3 grid grid-cols-4 gap-1">
                 <Stat icon={Leaf} value={leaves} label="feuilles" testid="stat-leaves" />
                 <Stat icon={Sprout} value={roots} label="racines" testid="stat-roots" />

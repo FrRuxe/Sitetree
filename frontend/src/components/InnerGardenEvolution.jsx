@@ -1,6 +1,6 @@
-import { X, Leaf, Sprout, Flower2, Apple } from "lucide-react";
+import { X, Leaf, Sprout, Flower2, Apple, Pencil } from "lucide-react";
 import { InnerTreeSvg } from "./InnerTreeSvg";
-import { MOCK_THEMES, MOCK_FRUITS, SOFT_MICROCOPY } from "../lib/responses";
+import { MOCK_FRUITS, SOFT_MICROCOPY } from "../lib/responses";
 
 const StatBlock = ({ icon: Icon, value, label, testid }) => (
     <div
@@ -14,9 +14,19 @@ const StatBlock = ({ icon: Icon, value, label, testid }) => (
     </div>
 );
 
-export const InnerGardenEvolution = ({ treeStats, recentFruits, onClose }) => {
+export const InnerGardenEvolution = ({
+    treeStats,
+    recentFruits,
+    onClose,
+    onEditCategories,
+}) => {
     const fruits = recentFruits && recentFruits.length > 0 ? recentFruits : MOCK_FRUITS;
     const microcopy = SOFT_MICROCOPY[treeStats.leaves % SOFT_MICROCOPY.length];
+    const cats = treeStats.categories || [];
+
+    // Pour la barre par branche : total = leaves + flowers + fruits par catégorie
+    const branchTotals = cats.map((c) => c.leaves + c.flowers + c.fruits);
+    const maxBranch = Math.max(1, ...branchTotals);
 
     return (
         <div
@@ -29,7 +39,6 @@ export const InnerGardenEvolution = ({ treeStats, recentFruits, onClose }) => {
                 style={{ backgroundColor: "#FAF9F6" }}
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* Close */}
                 <button
                     onClick={onClose}
                     data-testid="evolution-close"
@@ -50,12 +59,14 @@ export const InnerGardenEvolution = ({ treeStats, recentFruits, onClose }) => {
                     <p className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui text-center">
                         Mon évolution
                     </p>
-                    <div className="mx-auto w-56 h-64 md:w-72 md:h-80 mt-2">
+                    <div className="mx-auto w-72 h-80 md:w-96 md:h-[26rem] mt-2">
                         <InnerTreeSvg
                             stageKey={treeStats.stageKey}
                             leaves={treeStats.leaves}
                             flowers={treeStats.flowers}
                             fruits={treeStats.fruits}
+                            categories={treeStats.categories}
+                            showLabels={true}
                             className="w-full h-full"
                         />
                     </div>
@@ -92,7 +103,7 @@ export const InnerGardenEvolution = ({ treeStats, recentFruits, onClose }) => {
                         </p>
                     </div>
 
-                    {/* Stats */}
+                    {/* Stats globales */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <StatBlock icon={Leaf} value={treeStats.leaves} label="feuilles" testid="evo-leaves" />
                         <StatBlock icon={Sprout} value={treeStats.roots} label="racines" testid="evo-roots" />
@@ -100,34 +111,79 @@ export const InnerGardenEvolution = ({ treeStats, recentFruits, onClose }) => {
                         <StatBlock icon={Apple} value={treeStats.fruits} label="fruits" testid="evo-fruits" />
                     </div>
 
-                    {/* Thèmes */}
-                    <div>
-                        <p className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui mb-3">
-                            Thèmes les plus abordés
-                        </p>
-                        <div className="space-y-2.5">
-                            {MOCK_THEMES.map((t) => (
-                                <div key={t.label} className="flex items-center gap-3">
-                                    <span className="text-sm text-stone-700 w-40 shrink-0 font-sans-ui">
-                                        {t.label}
-                                    </span>
-                                    <div className="flex-1 h-1 rounded-full bg-stone-200/70 overflow-hidden">
+                    {/* Détail par branche */}
+                    {cats.length > 0 && (
+                        <div>
+                            <div className="flex items-center justify-between mb-3">
+                                <p className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui">
+                                    Tes branches
+                                </p>
+                                {onEditCategories && (
+                                    <button
+                                        onClick={onEditCategories}
+                                        data-testid="evo-edit-categories"
+                                        className="inline-flex items-center gap-1 text-xs text-stone-500 hover:text-stone-800 font-sans-ui transition-colors"
+                                    >
+                                        <Pencil className="w-3 h-3" />
+                                        Modifier
+                                    </button>
+                                )}
+                            </div>
+                            <div className="space-y-2.5" data-testid="branches-list">
+                                {cats.map((c, idx) => {
+                                    const total = branchTotals[idx];
+                                    const pct = (total / maxBranch) * 100;
+                                    return (
                                         <div
-                                            className="h-full rounded-full"
+                                            key={c.id}
+                                            className="rounded-2xl p-3"
                                             style={{
-                                                width: `${t.weight * 100}%`,
-                                                backgroundColor: "#C07C66",
-                                                opacity: 0.7,
+                                                backgroundColor: `${c.color}10`,
                                             }}
-                                        />
-                                    </div>
-                                    <span className="text-xs text-stone-500 w-10 text-right font-sans-ui">
-                                        {Math.round(t.weight * 100)}%
-                                    </span>
-                                </div>
-                            ))}
+                                            data-testid={`branch-row-${c.id}`}
+                                        >
+                                            <div className="flex items-center gap-2.5 mb-2">
+                                                <span
+                                                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                                                    style={{ backgroundColor: c.color }}
+                                                />
+                                                <span className="text-sm font-medium text-stone-800 font-sans-ui flex-1">
+                                                    {c.label}
+                                                </span>
+                                                <span className="text-xs text-stone-500 font-sans-ui">
+                                                    {total} {total > 1 ? "éléments" : "élément"}
+                                                </span>
+                                            </div>
+                                            <div className="h-1 w-full rounded-full bg-stone-200/50 overflow-hidden">
+                                                <div
+                                                    className="h-full rounded-full transition-all duration-700"
+                                                    style={{
+                                                        width: `${pct}%`,
+                                                        backgroundColor: c.color,
+                                                        opacity: 0.75,
+                                                    }}
+                                                />
+                                            </div>
+                                            <div className="flex items-center gap-3 mt-2 text-[11px] text-stone-500 font-sans-ui">
+                                                <span className="flex items-center gap-1">
+                                                    <Leaf className="w-3 h-3" style={{ color: c.color }} />
+                                                    {c.leaves}
+                                                </span>
+                                                <span className="flex items-center gap-1">
+                                                    <Flower2 className="w-3 h-3" style={{ color: c.color }} />
+                                                    {c.flowers}
+                                                </span>
+                                                <span className="flex items-center gap-1">
+                                                    <Apple className="w-3 h-3" style={{ color: c.color }} />
+                                                    {c.fruits}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Fruits symboliques */}
                     <div>
