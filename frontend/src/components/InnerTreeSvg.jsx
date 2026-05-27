@@ -257,6 +257,8 @@ export const InnerTreeSvg = ({
     return (
         <svg
             viewBox="0 0 120 140"
+            data-tree-svg="true"
+            data-categories={hasCategories ? categories.length : 0}
             className={`${className} ${breathe ? "animate-breathe" : ""}`}
             aria-label="Ton arbre intérieur"
             role="img"

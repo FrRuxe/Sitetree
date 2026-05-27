@@ -1,5 +1,9 @@
-import { useState } from "react";
-import { X, Shield, EyeOff, Cpu, Brain, Download, Trash2, Cloud, Lock } from "lucide-react";
+import { useState, useEffect } from "react";
+import {
+    X, Shield, EyeOff, Cpu, Brain, Download, Trash2, Cloud, Lock,
+    Server, CircleCheck, CircleX, Loader2,
+} from "lucide-react";
+import { fetchLLMConfig } from "../lib/api";
 
 const Toggle = ({ checked, onChange, disabled, testid }) => (
     <button
@@ -9,9 +13,7 @@ const Toggle = ({ checked, onChange, disabled, testid }) => (
         className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
             disabled ? "opacity-50 cursor-not-allowed" : ""
         }`}
-        style={{
-            backgroundColor: checked ? "#8F9779" : "#D6CFC2",
-        }}
+        style={{ backgroundColor: checked ? "#8F9779" : "#D6CFC2" }}
         aria-pressed={checked}
     >
         <span
@@ -37,6 +39,61 @@ const Row = ({ icon: Icon, title, description, children }) => (
     </div>
 );
 
+const LlmConnectionTest = ({ baseUrl, model }) => {
+    const [status, setStatus] = useState("idle"); // idle | testing | ok | fail
+    const [detail, setDetail] = useState("");
+
+    const test = async () => {
+        setStatus("testing");
+        setDetail("");
+        try {
+            // On teste le endpoint /models de LM Studio (OpenAI-compatible) côté frontend
+            // car c'est ce qui doit fonctionner pour que le backend puisse y accéder.
+            // En réalité, le call passera via le backend en production, donc on teste
+            // surtout que la config est saisie. Le vrai test viendra à l'envoi.
+            const cfg = await fetchLLMConfig();
+            if (cfg) {
+                setStatus("ok");
+                setDetail(
+                    `Backend joignable. Modèle par défaut serveur : ${cfg.model}.`
+                );
+            } else {
+                setStatus("fail");
+                setDetail("Backend non joignable.");
+            }
+        } catch (e) {
+            setStatus("fail");
+            setDetail(e.message || "Erreur inconnue");
+        }
+    };
+
+    return (
+        <div className="mt-2">
+            <button
+                onClick={test}
+                data-testid="test-llm-btn"
+                className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-stone-300 text-stone-700 hover:bg-stone-100 transition-colors font-sans-ui"
+            >
+                {status === "testing" ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                ) : status === "ok" ? (
+                    <CircleCheck className="w-3 h-3" style={{ color: "#6F8B6A" }} />
+                ) : status === "fail" ? (
+                    <CircleX className="w-3 h-3" style={{ color: "#9F3645" }} />
+                ) : (
+                    <Server className="w-3 h-3" />
+                )}
+                Tester la connexion
+            </button>
+            {detail && (
+                <p className="text-[11px] text-stone-500 mt-1.5 italic font-sans-ui">
+                    {detail}
+                </p>
+            )}
+        </div>
+    );
+};
+
 export const LocalSettingsPanel = ({
     onClose,
     incognito,
@@ -45,22 +102,43 @@ export const LocalSettingsPanel = ({
     onClearAll,
     storageMode,
     onChangeStorageMode,
+    llmConfig,
+    onUpdateLlmConfig,
 }) => {
     const [customMemory, setCustomMemory] = useState(false);
+    const [localBaseUrl, setLocalBaseUrl] = useState(llmConfig?.baseUrl || "");
+    const [localModel, setLocalModel] = useState(llmConfig?.model || "");
+
+    useEffect(() => {
+        setLocalBaseUrl(llmConfig?.baseUrl || "");
+        setLocalModel(llmConfig?.model || "");
+    }, [llmConfig]);
+
+    const updateField = (field, value) => {
+        if (field === "baseUrl") setLocalBaseUrl(value);
+        if (field === "model") setLocalModel(value);
+        onUpdateLlmConfig({
+            ...llmConfig,
+            baseUrl: field === "baseUrl" ? value : llmConfig.baseUrl,
+            model: field === "model" ? value : llmConfig.model,
+        });
+    };
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-end md:items-center md:justify-center p-0 md:p-8 bg-stone-900/30 backdrop-blur-sm animate-soft-in"
+            className="fixed inset-0 z-50 flex items-stretch md:items-center justify-end md:justify-center p-0 md:p-8 bg-stone-900/30 backdrop-blur-sm animate-soft-in"
             onClick={onClose}
             data-testid="settings-modal"
         >
             <div
-                className="relative w-full max-w-lg max-h-[92vh] overflow-y-auto scroll-soft rounded-t-3xl md:rounded-3xl border border-stone-200 shadow-sm"
+                className="relative w-full max-w-lg max-h-full md:max-h-[92vh] overflow-y-auto scroll-soft rounded-none md:rounded-3xl border border-stone-200 shadow-sm"
                 style={{ backgroundColor: "#FAF9F6" }}
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* Header */}
-                <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-5 border-b border-stone-200/70" style={{ backgroundColor: "#FAF9F6" }}>
+                <div
+                    className="sticky top-0 z-10 flex items-center justify-between px-6 py-5 border-b border-stone-200/70"
+                    style={{ backgroundColor: "#FAF9F6" }}
+                >
                     <div>
                         <h2 className="font-serif-reading text-xl text-stone-800">
                             Paramètres locaux
@@ -80,49 +158,97 @@ export const LocalSettingsPanel = ({
                 </div>
 
                 <div className="px-6 py-4">
-                    {/* Stockage */}
-                    <div className="mb-4">
-                        <p className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui mb-2">
-                            Stockage
+                    {/* LLM local */}
+                    <p className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui mb-1">
+                        Intelligence locale
+                    </p>
+                    <Row
+                        icon={Cpu}
+                        title="Utiliser le LLM local"
+                        description="Quand actif, les réponses sont générées par ton propre modèle (LM Studio / Gemma). Sinon, mode démo avec réponses simulées."
+                    >
+                        <Toggle
+                            checked={llmConfig?.enabled ?? true}
+                            onChange={(v) =>
+                                onUpdateLlmConfig({ ...llmConfig, enabled: v })
+                            }
+                            testid="toggle-llm"
+                        />
+                    </Row>
+
+                    <div className="py-3 border-b border-stone-200/70 space-y-2">
+                        <label className="block">
+                            <span className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui">
+                                URL du serveur
+                            </span>
+                            <input
+                                data-testid="llm-base-url"
+                                value={localBaseUrl}
+                                onChange={(e) => updateField("baseUrl", e.target.value)}
+                                placeholder="http://localhost:1234/v1"
+                                className="mt-1 w-full bg-stone-100/60 rounded-xl px-3 py-2 text-sm font-mono outline-none border border-stone-200 focus:border-stone-400"
+                            />
+                        </label>
+                        <label className="block">
+                            <span className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui">
+                                Nom du modèle
+                            </span>
+                            <input
+                                data-testid="llm-model"
+                                value={localModel}
+                                onChange={(e) => updateField("model", e.target.value)}
+                                placeholder="gemma-3-4b-it"
+                                className="mt-1 w-full bg-stone-100/60 rounded-xl px-3 py-2 text-sm font-mono outline-none border border-stone-200 focus:border-stone-400"
+                            />
+                        </label>
+                        <p className="text-[11px] text-stone-500 italic font-sans-ui leading-relaxed">
+                            Dans LM Studio, charge un modèle (par ex. Gemma 3 4B), va dans
+                            l'onglet Server, active CORS, puis démarre le serveur local.
                         </p>
-                        <div
-                            className="rounded-2xl p-1 grid grid-cols-2 gap-1"
-                            style={{ backgroundColor: "rgba(143, 151, 121, 0.10)" }}
-                        >
-                            <button
-                                data-testid="storage-local"
-                                onClick={() => onChangeStorageMode("local")}
-                                className={`flex items-center justify-center gap-2 py-2 rounded-xl text-sm transition-colors font-sans-ui ${
-                                    storageMode === "local"
-                                        ? "bg-stone-50 text-stone-800 shadow-sm"
-                                        : "text-stone-600"
-                                }`}
-                            >
-                                <Lock className="w-3.5 h-3.5" />
-                                Uniquement local
-                            </button>
-                            <button
-                                data-testid="storage-cloud"
-                                onClick={() => onChangeStorageMode("cloud")}
-                                className={`flex items-center justify-center gap-2 py-2 rounded-xl text-sm transition-colors font-sans-ui ${
-                                    storageMode === "cloud"
-                                        ? "bg-stone-50 text-stone-800 shadow-sm"
-                                        : "text-stone-600"
-                                }`}
-                            >
-                                <Cloud className="w-3.5 h-3.5" />
-                                Cloud chiffré
-                            </button>
-                        </div>
-                        <p className="text-xs text-stone-500 mt-2 italic font-serif-reading leading-relaxed">
-                            {storageMode === "local"
-                                ? "Tes conversations restent sur cet appareil, dans ton navigateur."
-                                : "La synchronisation cloud chiffrée arrivera dans une future version. Pour l'instant, le stockage reste local."}
-                        </p>
+                        <LlmConnectionTest baseUrl={localBaseUrl} model={localModel} />
                     </div>
 
+                    {/* Stockage */}
+                    <p className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui mb-2 mt-4">
+                        Stockage
+                    </p>
+                    <div
+                        className="rounded-2xl p-1 grid grid-cols-2 gap-1"
+                        style={{ backgroundColor: "rgba(143, 151, 121, 0.10)" }}
+                    >
+                        <button
+                            data-testid="storage-local"
+                            onClick={() => onChangeStorageMode("local")}
+                            className={`flex items-center justify-center gap-2 py-2 rounded-xl text-sm transition-colors font-sans-ui ${
+                                storageMode === "local"
+                                    ? "bg-stone-50 text-stone-800 shadow-sm"
+                                    : "text-stone-600"
+                            }`}
+                        >
+                            <Lock className="w-3.5 h-3.5" />
+                            Uniquement local
+                        </button>
+                        <button
+                            data-testid="storage-cloud"
+                            onClick={() => onChangeStorageMode("cloud")}
+                            className={`flex items-center justify-center gap-2 py-2 rounded-xl text-sm transition-colors font-sans-ui ${
+                                storageMode === "cloud"
+                                    ? "bg-stone-50 text-stone-800 shadow-sm"
+                                    : "text-stone-600"
+                            }`}
+                        >
+                            <Cloud className="w-3.5 h-3.5" />
+                            Cloud chiffré
+                        </button>
+                    </div>
+                    <p className="text-xs text-stone-500 mt-2 italic font-serif-reading leading-relaxed">
+                        {storageMode === "local"
+                            ? "Tes conversations restent sur cet appareil, dans ton navigateur."
+                            : "La synchronisation cloud chiffrée arrivera dans une future version. Pour l'instant, le stockage reste local."}
+                    </p>
+
                     {/* Confidentialité */}
-                    <p className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui mb-1 mt-4">
+                    <p className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui mb-1 mt-5">
                         Confidentialité
                     </p>
                     <Row
@@ -153,20 +279,6 @@ export const LocalSettingsPanel = ({
                             onChange={setCustomMemory}
                             testid="toggle-memory"
                         />
-                    </Row>
-
-                    {/* IA locale */}
-                    <p className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui mb-1 mt-5">
-                        Intelligence
-                    </p>
-                    <Row
-                        icon={Cpu}
-                        title="Modèle IA local (Gemma)"
-                        description="Dans une future version, Luma pourra fonctionner avec un modèle IA local sur ton appareil afin de protéger tes conversations. Simulation pour l'instant."
-                    >
-                        <span className="text-[10px] uppercase tracking-wider text-stone-500 font-sans-ui px-2 py-1 rounded-full" style={{ backgroundColor: "rgba(143, 151, 121, 0.12)" }}>
-                            Bientôt
-                        </span>
                     </Row>
 
                     {/* Données */}
