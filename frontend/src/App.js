@@ -30,26 +30,21 @@ import {
 import { streamChat, fetchLLMConfig } from "@/lib/api";
 import { getBranchAngles } from "@/lib/categories";
 import { getUserId } from "@/lib/userSeed";
+import {
+    createConversation,
+    migrateToConversations,
+    makeConversationTitle,
+    trimConversations,
+} from "@/lib/conversations";
 
-// Note de sécurité : `localStorage` est utilisé volontairement pour rester local-first.
-// Aucune donnée d'authentification ni token sensible n'y est stocké — uniquement
-// le journal et les préférences de l'utilisateur sur SA propre machine.
-// Le projet n'a pas de notion d'utilisateur distant ; le risque XSS d'un script
-// tiers est inexistant car l'app ne charge aucun script externe.
-const STORAGE_KEY = "jardin-interieur-state-v2";
+// localStorage est utilisé pour rester local-first. Aucune donnée d'authentification
+// n'y est stockée — uniquement le journal et les préférences sur la machine du user.
+const STORAGE_KEY = "jardin-interieur-state-v3";
+const STORAGE_KEY_V2 = "jardin-interieur-state-v2"; // ancien format pour migration
 const INCOGNITO_KEY = "jardin-interieur-incognito-v1";
 const LLM_KEY = "jardin-interieur-llm-config-v1";
 
 const DEFAULT_TRUNK = { leaves: 0, roots: 0, flowers: 0, fruits: 0 };
-
-const createInitialMessages = (mode) => [
-    {
-        id: `init-${Date.now()}`,
-        role: "assistant",
-        type: "text",
-        text: MODE_OPENERS[mode] || MODE_OPENERS.free,
-    },
-];
 
 const safeLoad = (key) => {
     try {
@@ -60,7 +55,6 @@ const safeLoad = (key) => {
         return null;
     }
 };
-
 const safeWrite = (key, value) => {
     try {
         localStorage.setItem(key, JSON.stringify(value));
@@ -68,7 +62,6 @@ const safeWrite = (key, value) => {
         console.warn("[storage] write failed", key, err);
     }
 };
-
 const safeRemove = (key) => {
     try {
         localStorage.removeItem(key);
@@ -76,7 +69,6 @@ const safeRemove = (key) => {
         console.warn("[storage] remove failed", key, err);
     }
 };
-
 const loadIncognito = () => {
     try {
         return localStorage.getItem(INCOGNITO_KEY) === "1";
@@ -85,8 +77,26 @@ const loadIncognito = () => {
     }
 };
 
+// Migration v2 → v3 si nécessaire
+const loadAndMigrate = () => {
+    const v3 = safeLoad(STORAGE_KEY);
+    if (v3) return v3;
+    const v2 = safeLoad(STORAGE_KEY_V2);
+    if (!v2) return null;
+    const conversations = migrateToConversations(v2);
+    return {
+        conversations,
+        activeConversationId: conversations[0]?.id || null,
+        messageCount: v2.messageCount || 0,
+        trunk: v2.trunk || DEFAULT_TRUNK,
+        categories: v2.categories || null,
+        storageMode: v2.storageMode || "local",
+        lastVisitDate: v2.lastVisitDate || null,
+    };
+};
+
 function App() {
-    const savedRef = useRef(safeLoad(STORAGE_KEY));
+    const savedRef = useRef(loadAndMigrate());
     const saved = savedRef.current;
 
     const userId = useMemo(() => getUserId(), []);
@@ -94,10 +104,15 @@ function App() {
     const [storageMode, setStorageMode] = useState(() => saved?.storageMode || "local");
     const [incognitoMode, setIncognitoMode] = useState(() => loadIncognito());
 
-    const [selectedMode, setSelectedMode] = useState(() => saved?.selectedMode || "free");
-    const [messages, setMessages] = useState(() =>
-        saved?.messages?.length ? saved.messages : createInitialMessages(saved?.selectedMode || "free")
+    const [conversations, setConversations] = useState(() =>
+        migrateToConversations(saved)
     );
+    const [activeConversationId, setActiveConversationId] = useState(() => {
+        if (saved?.activeConversationId) return saved.activeConversationId;
+        const firstConv = migrateToConversations(saved)[0];
+        return firstConv?.id;
+    });
+
     const [inputValue, setInputValue] = useState("");
     const [isTyping, setIsTyping] = useState(false);
     const [messageCount, setMessageCount] = useState(() =>
@@ -105,7 +120,6 @@ function App() {
     );
     const [trunk, setTrunk] = useState(() => ({ ...DEFAULT_TRUNK, ...(saved?.trunk || {}) }));
     const [categories, setCategories] = useState(() => saved?.categories || null);
-    const [selectedCategoryId, setSelectedCategoryId] = useState(null);
     const [lastVisitDate, setLastVisitDate] = useState(() => saved?.lastVisitDate || null);
 
     const [llmConfig, setLlmConfig] = useState(() => {
@@ -127,49 +141,54 @@ function App() {
     const [growthToast, setGrowthToast] = useState(null);
     const toastTimerRef = useRef(null);
     const [flyingLeaves, setFlyingLeaves] = useState([]);
-    const [returningMessage, setReturningMessage] = useState(null);
 
     const streamControllerRef = useRef(null);
-    // Ref toujours synchronisé pour éviter les closures périmées sur les messages
-    const messagesRef = useRef(messages);
+    // Ref synchronisé avec conversations + activeId pour éviter closures périmées
+    const stateRef = useRef({ conversations, activeConversationId });
     useEffect(() => {
-        messagesRef.current = messages;
-    }, [messages]);
+        stateRef.current = { conversations, activeConversationId };
+    }, [conversations, activeConversationId]);
 
-    // Message d'accueil au mount selon la durée d'absence
-    useEffect(() => {
-        if (!lastVisitDate) return;
-        const days = daysSince(lastVisitDate);
-        const msg = getReturningMessage(days);
-        if (msg && messages.length <= 1) {
-            setReturningMessage(msg);
-            setMessages((prev) => [
-                ...prev,
-                {
-                    id: `back-${Date.now()}`,
-                    role: "assistant",
-                    type: "text",
-                    text: msg,
-                },
-            ]);
-            setTimeout(() => setReturningMessage(null), 8000);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+    // ====== Dérivation de la conv active ======
+    const activeConv = useMemo(
+        () =>
+            conversations.find((c) => c.id === activeConversationId) ||
+            conversations[0],
+        [conversations, activeConversationId]
+    );
+    const selectedMode = activeConv?.mode || "free";
+    const messages = activeConv?.messages || [];
+    const selectedCategoryId = activeConv?.branchId || null;
+
+    // ====== Helpers d'update de la conv active ======
+    const updateActiveConv = useCallback((updater) => {
+        setConversations((prev) =>
+            prev.map((c) => {
+                if (c.id !== stateRef.current.activeConversationId) return c;
+                const updated = typeof updater === "function" ? updater(c) : { ...c, ...updater };
+                return { ...updated, updatedAt: new Date().toISOString() };
+            })
+        );
     }, []);
 
-    // Persistance principale (hors incognito)
+    const setSelectedCategoryId = useCallback(
+        (id) => updateActiveConv({ branchId: id }),
+        [updateActiveConv]
+    );
+
+    // ====== Persistance ======
     useEffect(() => {
         if (incognitoMode) return;
         safeWrite(STORAGE_KEY, {
-            messages,
+            conversations: trimConversations(conversations),
+            activeConversationId,
             messageCount,
             trunk,
             categories,
-            selectedMode,
             storageMode,
             lastVisitDate,
         });
-    }, [messages, messageCount, trunk, categories, selectedMode, storageMode, incognitoMode, lastVisitDate]);
+    }, [conversations, activeConversationId, messageCount, trunk, categories, storageMode, incognitoMode, lastVisitDate]);
 
     useEffect(() => {
         if (incognitoMode) safeWrite(INCOGNITO_KEY, "1");
@@ -180,7 +199,6 @@ function App() {
         safeWrite(LLM_KEY, llmConfig);
     }, [llmConfig]);
 
-    // Récupération de la config par défaut au mount
     useEffect(() => {
         fetchLLMConfig().then((cfg) => {
             if (!cfg) return;
@@ -195,11 +213,30 @@ function App() {
         });
     }, []);
 
-    // Calcul du decay visuel (les stats réelles ne changent pas)
-    const daysAbsent = useMemo(
-        () => daysSince(lastVisitDate),
-        [lastVisitDate]
-    );
+    // Message de retour au mount selon durée d'absence
+    useEffect(() => {
+        if (!lastVisitDate) return;
+        const days = daysSince(lastVisitDate);
+        const msg = getReturningMessage(days);
+        if (msg && (activeConv?.messages?.length || 0) <= 1) {
+            updateActiveConv((c) => ({
+                ...c,
+                messages: [
+                    ...c.messages,
+                    {
+                        id: `back-${Date.now()}`,
+                        role: "assistant",
+                        type: "text",
+                        text: msg,
+                    },
+                ],
+            }));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // ====== Decay visuel ======
+    const daysAbsent = useMemo(() => daysSince(lastVisitDate), [lastVisitDate]);
     const visualTrunk = useMemo(
         () => applyDecayToTrunk(trunk, daysAbsent),
         [trunk, daysAbsent]
@@ -218,7 +255,6 @@ function App() {
         ...aggregated,
         trunk: visualTrunk,
         categories: visualCategories || [],
-        // Stats brutes (pour debug / future export)
         realTrunk: trunk,
         realCategories: categories || [],
         messageCount,
@@ -250,27 +286,22 @@ function App() {
                 x: inputRect.left + inputRect.width / 2 - 11,
                 y: inputRect.top + 10,
             };
-
             const svg = document.querySelector('[data-tree-svg="true"]');
             if (!svg) return;
             const svgRect = svg.getBoundingClientRect();
             const sx = svgRect.width / 120;
             const sy = svgRect.height / 140;
-
             const rad = ((angle - 90) * Math.PI) / 180;
-            const originX = 60;
             const heightFactor = Math.max(0, Math.min(1, (treeMeta.progress - 5) / 90));
             const originY = 125 - 8 - heightFactor * 75 + 4;
             const total = (cat.leaves || 0) + (cat.flowers || 0) + (cat.fruits || 0);
             const length = 18 + heightFactor * 14 + Math.min(total, 18) * 0.85;
-            const tipX = originX + Math.cos(rad) * length;
+            const tipX = 60 + Math.cos(rad) * length;
             const tipY = originY + Math.sin(rad) * length;
-
             const to = {
                 x: svgRect.left + tipX * sx - 11,
                 y: svgRect.top + tipY * sy - 11,
             };
-
             const id = `leaf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
             setFlyingLeaves((prev) => [...prev, { id, from, to, color: cat.color }]);
         },
@@ -281,48 +312,57 @@ function App() {
         setFlyingLeaves((prev) => prev.filter((l) => l.id !== id));
     }, []);
 
-    // Reply mocké (fallback)
     const runMockReply = useCallback(() => {
         setIsTyping(true);
+        const mode = stateRef.current.conversations.find(
+            (c) => c.id === stateRef.current.activeConversationId
+        )?.mode || "free";
         const delay = 1500 + Math.random() * 600;
         setTimeout(() => {
-            const pool = MODE_RESPONSES[selectedMode] || MODE_RESPONSES.free;
+            const pool = MODE_RESPONSES[mode] || MODE_RESPONSES.free;
             const reply = pool[Math.floor(Math.random() * pool.length)];
             setIsTyping(false);
-            setMessages((prev) => [
-                ...prev,
-                {
-                    id: `a-${Date.now()}`,
-                    role: "assistant",
-                    type: "text",
-                    text: reply,
-                },
-            ]);
+            updateActiveConv((c) => ({
+                ...c,
+                messages: [
+                    ...c.messages,
+                    {
+                        id: `a-${Date.now()}`,
+                        role: "assistant",
+                        type: "text",
+                        text: reply,
+                    },
+                ],
+            }));
         }, delay);
-    }, [selectedMode]);
+    }, [updateActiveConv]);
 
-    // Streaming depuis LM Studio. On lit messagesRef.current pour éviter les closures périmées.
     const startLLMStream = useCallback(
         (latestUserText) => {
-            const history = messagesRef.current
+            const conv = stateRef.current.conversations.find(
+                (c) => c.id === stateRef.current.activeConversationId
+            );
+            const history = (conv?.messages || [])
                 .filter((m) => m.type !== "crisis" && !m.streaming)
                 .filter((m) => (m.text || "").trim().length > 0)
                 .map((m) => ({ role: m.role, content: m.text }));
             history.push({ role: "user", content: latestUserText });
 
             const aiId = `a-${Date.now()}`;
-            setMessages((prev) => [
-                ...prev,
-                {
-                    id: aiId,
-                    role: "assistant",
-                    type: "text",
-                    text: "",
-                    streaming: true,
-                },
-            ]);
+            updateActiveConv((c) => ({
+                ...c,
+                messages: [
+                    ...c.messages,
+                    {
+                        id: aiId,
+                        role: "assistant",
+                        type: "text",
+                        text: "",
+                        streaming: true,
+                    },
+                ],
+            }));
             setIsTyping(true);
-
             streamControllerRef.current?.abort();
 
             let buffer = "";
@@ -334,17 +374,18 @@ function App() {
                 if (done) return;
                 done = true;
                 setIsTyping(false);
-                setMessages((prev) =>
-                    prev.map((m) =>
+                updateActiveConv((c) => ({
+                    ...c,
+                    messages: c.messages.map((m) =>
                         m.id === aiId ? { ...m, streaming: false } : m
-                    )
-                );
+                    ),
+                }));
             };
 
             streamChat(
                 {
                     messages: history,
-                    mode: selectedMode,
+                    mode: conv?.mode || "free",
                     categories: categories || [],
                     base_url: llmConfig.baseUrl,
                     model: llmConfig.model,
@@ -353,36 +394,39 @@ function App() {
                     onDelta: (chunk) => {
                         if (crisisHit || errorHit) return;
                         buffer += chunk;
-                        setMessages((prev) =>
-                            prev.map((m) =>
+                        updateActiveConv((c) => ({
+                            ...c,
+                            messages: c.messages.map((m) =>
                                 m.id === aiId ? { ...m, text: buffer } : m
-                            )
-                        );
+                            ),
+                        }));
                         setIsTyping(false);
                     },
                     onCrisis: (msg) => {
                         crisisHit = true;
                         setIsTyping(false);
-                        setMessages((prev) =>
-                            prev
+                        updateActiveConv((c) => ({
+                            ...c,
+                            messages: c.messages
                                 .filter((m) => m.id !== aiId)
                                 .concat({
                                     id: `c-${Date.now()}`,
                                     role: "assistant",
                                     type: "crisis",
                                     text: msg || CRISIS_MESSAGE,
-                                })
-                        );
+                                }),
+                        }));
                     },
                     onError: (err) => {
                         if (errorHit) return;
                         errorHit = true;
                         setIsTyping(false);
                         console.warn("[llm] error", err);
-                        const pool = MODE_RESPONSES[selectedMode] || MODE_RESPONSES.free;
+                        const pool = MODE_RESPONSES[conv?.mode || "free"] || MODE_RESPONSES.free;
                         const fallback = pool[Math.floor(Math.random() * pool.length)];
-                        setMessages((prev) =>
-                            prev.map((m) =>
+                        updateActiveConv((c) => ({
+                            ...c,
+                            messages: c.messages.map((m) =>
                                 m.id === aiId
                                     ? {
                                           ...m,
@@ -391,8 +435,8 @@ function App() {
                                           llmError: err?.message || "LLM unreachable",
                                       }
                                     : m
-                            )
-                        );
+                            ),
+                        }));
                     },
                     onDone: finalize,
                 }
@@ -400,21 +444,22 @@ function App() {
                 streamControllerRef.current = controller;
             });
         },
-        [selectedMode, categories, llmConfig]
+        [categories, llmConfig, updateActiveConv]
     );
 
     const handleSend = useCallback(() => {
         const text = inputValue.trim();
         if (!text) return;
+        const currentCategoryId = selectedCategoryId; // sticky : on garde cette branche
 
         const userMsg = {
             id: `u-${Date.now()}`,
             role: "user",
             type: "text",
             text,
-            categoryId: selectedCategoryId || null,
+            categoryId: currentCategoryId,
         };
-        setMessages((prev) => [...prev, userMsg]);
+        updateActiveConv((c) => ({ ...c, messages: [...c.messages, userMsg] }));
         setInputValue("");
         setLastVisitDate(new Date().toISOString());
 
@@ -426,31 +471,34 @@ function App() {
             categories,
             selectedMode,
             nextCount,
-            selectedCategoryId
+            currentCategoryId
         );
         setTrunk(result.trunk);
         if (result.categories) setCategories(result.categories);
         showGrowth(result.growthEvents);
 
-        if (selectedCategoryId && result.growthEvents.length > 0) {
-            setTimeout(() => triggerFlyingLeaf(selectedCategoryId), 150);
+        if (currentCategoryId && result.growthEvents.length > 0) {
+            setTimeout(() => triggerFlyingLeaf(currentCategoryId), 150);
         }
 
-        setSelectedCategoryId(null);
+        // !!! Pas de reset du selectedCategoryId : la branche reste collante.
 
         if (detectCrisis(text)) {
             setIsTyping(true);
             setTimeout(() => {
                 setIsTyping(false);
-                setMessages((prev) => [
-                    ...prev,
-                    {
-                        id: `c-${Date.now()}`,
-                        role: "assistant",
-                        type: "crisis",
-                        text: CRISIS_MESSAGE,
-                    },
-                ]);
+                updateActiveConv((c) => ({
+                    ...c,
+                    messages: [
+                        ...c.messages,
+                        {
+                            id: `c-${Date.now()}`,
+                            role: "assistant",
+                            type: "crisis",
+                            text: CRISIS_MESSAGE,
+                        },
+                    ],
+                }));
             }, 500);
             return;
         }
@@ -462,43 +510,83 @@ function App() {
         }
     }, [
         inputValue,
+        selectedCategoryId,
         messageCount,
         trunk,
         categories,
         selectedMode,
-        selectedCategoryId,
         showGrowth,
         triggerFlyingLeaf,
         llmConfig.enabled,
         startLLMStream,
         runMockReply,
+        updateActiveConv,
     ]);
 
-    const handleSelectMode = useCallback(
-        (mode) => {
-            if (mode === selectedMode) return;
-            setSelectedMode(mode);
-            setMessages((prev) => [
-                ...prev,
-                {
-                    id: `mode-${Date.now()}`,
-                    role: "assistant",
-                    type: "text",
-                    text: MODE_OPENERS[mode],
-                },
-            ]);
-            setSidebarOpen(false);
+    // ====== Conversations ======
+    const handleNewConversation = useCallback(() => {
+        streamControllerRef.current?.abort();
+        const conv = createConversation(selectedMode, null);
+        setConversations((prev) => trimConversations([conv, ...prev]));
+        setActiveConversationId(conv.id);
+        setInputValue("");
+        setSidebarOpen(false);
+    }, [selectedMode]);
+
+    const handleSelectConversation = useCallback((id) => {
+        streamControllerRef.current?.abort();
+        setActiveConversationId(id);
+        setInputValue("");
+        setSidebarOpen(false);
+    }, []);
+
+    const handleDeleteConversation = useCallback(
+        (id) => {
+            setConversations((prev) => {
+                const filtered = prev.filter((c) => c.id !== id);
+                // S'il ne reste rien, recrée une conv vide
+                if (filtered.length === 0) {
+                    const fresh = createConversation(selectedMode);
+                    setActiveConversationId(fresh.id);
+                    return [fresh];
+                }
+                // Si on supprime la conv active, bascule sur la plus récente
+                if (id === stateRef.current.activeConversationId) {
+                    const next = [...filtered].sort(
+                        (a, b) =>
+                            new Date(b.updatedAt || b.createdAt).getTime() -
+                            new Date(a.updatedAt || a.createdAt).getTime()
+                    )[0];
+                    setActiveConversationId(next.id);
+                }
+                return filtered;
+            });
         },
         [selectedMode]
     );
 
-    const handleNewReflection = useCallback(() => {
-        streamControllerRef.current?.abort();
-        setMessages(createInitialMessages(selectedMode));
-        setInputValue("");
-        setSelectedCategoryId(null);
-        setSidebarOpen(false);
-    }, [selectedMode]);
+    const handleSelectMode = useCallback(
+        (mode) => {
+            if (mode === selectedMode) return;
+            // On met à jour le mode de la conv active + on met un opener
+            updateActiveConv((c) => ({
+                ...c,
+                mode,
+                title: makeConversationTitle(mode, c.createdAt),
+                messages: [
+                    ...c.messages,
+                    {
+                        id: `mode-${Date.now()}`,
+                        role: "assistant",
+                        type: "text",
+                        text: MODE_OPENERS[mode],
+                    },
+                ],
+            }));
+            setSidebarOpen(false);
+        },
+        [selectedMode, updateActiveConv]
+    );
 
     const handleSaveCategories = useCallback((newCats) => {
         setCategories(newCats);
@@ -516,8 +604,8 @@ function App() {
         try {
             const payload = {
                 exportedAt: new Date().toISOString(),
-                selectedMode,
-                messages,
+                conversations,
+                activeConversationId,
                 messageCount,
                 trunk,
                 categories,
@@ -537,7 +625,7 @@ function App() {
         } catch (err) {
             console.warn("[export] failed", err);
         }
-    }, [selectedMode, messages, messageCount, trunk, categories, lastVisitDate]);
+    }, [conversations, activeConversationId, messageCount, trunk, categories, lastVisitDate]);
 
     const handleClearAll = useCallback(() => {
         const confirmed = window.confirm(
@@ -545,7 +633,10 @@ function App() {
         );
         if (!confirmed) return;
         safeRemove(STORAGE_KEY);
-        setMessages(createInitialMessages(selectedMode));
+        safeRemove(STORAGE_KEY_V2);
+        const fresh = createConversation("free");
+        setConversations([fresh]);
+        setActiveConversationId(fresh.id);
         setMessageCount(0);
         setTrunk(DEFAULT_TRUNK);
         setCategories(null);
@@ -553,19 +644,23 @@ function App() {
         setShowLocalSettings(false);
         setOnboardingIsFirstTime(true);
         setShowOnboarding(true);
-    }, [selectedMode]);
+    }, []);
 
     return (
         <div className="App flex" style={{ backgroundColor: "#FAF9F6" }}>
             <Sidebar
                 selectedMode={selectedMode}
                 onSelectMode={handleSelectMode}
-                onNewReflection={handleNewReflection}
+                onNewReflection={handleNewConversation}
                 treeStats={treeStats}
                 onOpenEmergency={() => setShowEmergencyCard(true)}
                 onOpenSettings={() => setShowLocalSettings(true)}
                 onOpenEvolution={() => setShowEvolution(true)}
                 onOpenCategoryEditor={handleOpenCategoryEditor}
+                conversations={conversations}
+                activeConversationId={activeConversationId}
+                onSelectConversation={handleSelectConversation}
+                onDeleteConversation={handleDeleteConversation}
                 isOpen={sidebarOpen}
                 onClose={() => setSidebarOpen(false)}
             />
@@ -628,7 +723,7 @@ function App() {
                 />
             )}
 
-            <GrowthToast message={growthToast || returningMessage} />
+            <GrowthToast message={growthToast} />
 
             {flyingLeaves.map((l) => (
                 <FlyingLeaf

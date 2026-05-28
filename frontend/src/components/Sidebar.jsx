@@ -1,5 +1,6 @@
 import { Leaf, Plus, LifeBuoy, Settings, X, Trees } from "lucide-react";
-import { ModeSelector } from "./ModeSelector";
+import { ModeDropdown } from "./ModeDropdown";
+import { ConversationList } from "./ConversationList";
 import { TreeWidget } from "./TreeWidget";
 
 export const Sidebar = ({
@@ -11,6 +12,10 @@ export const Sidebar = ({
     onOpenSettings,
     onOpenEvolution,
     onOpenCategoryEditor,
+    conversations,
+    activeConversationId,
+    onSelectConversation,
+    onDeleteConversation,
     isOpen,
     onClose,
 }) => {
@@ -31,7 +36,8 @@ export const Sidebar = ({
                 }`}
                 style={{ backgroundColor: "#F0EBE1" }}
             >
-                <div className="px-5 pt-6 pb-4 flex items-start gap-3">
+                {/* Header */}
+                <div className="px-5 pt-6 pb-3 flex items-start gap-3 shrink-0">
                     <div
                         className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
                         style={{ backgroundColor: "rgba(143, 151, 121, 0.18)" }}
@@ -56,7 +62,8 @@ export const Sidebar = ({
                     </button>
                 </div>
 
-                <div className="px-4 pb-2">
+                {/* Nouvelle réflexion */}
+                <div className="px-4 pb-3 shrink-0">
                     <button
                         data-testid="new-reflection-btn"
                         onClick={onNewReflection}
@@ -67,49 +74,64 @@ export const Sidebar = ({
                     </button>
                 </div>
 
-                <div className="px-3 py-3">
-                    <ModeSelector
-                        selectedMode={selectedMode}
-                        onSelect={onSelectMode}
-                    />
+                {/* Contenu scrollable */}
+                <div className="flex-1 overflow-y-auto scroll-soft px-3 py-1 space-y-4">
+                    <div className="px-1">
+                        <ModeDropdown
+                            selectedMode={selectedMode}
+                            onSelect={onSelectMode}
+                        />
+                    </div>
+
+                    {conversations && conversations.length > 0 && (
+                        <ConversationList
+                            conversations={conversations}
+                            activeId={activeConversationId}
+                            onSelect={onSelectConversation}
+                            onDelete={onDeleteConversation}
+                        />
+                    )}
+
+                    <div className="px-1">
+                        <TreeWidget
+                            stage={treeStats.stage}
+                            stageKey={treeStats.stageKey}
+                            progress={treeStats.progress}
+                            season={treeStats.season}
+                            leaves={treeStats.leaves}
+                            roots={treeStats.roots}
+                            flowers={treeStats.flowers}
+                            fruits={treeStats.fruits}
+                            messageCount={treeStats.messageCount}
+                            categories={treeStats.categories}
+                            seed={treeStats.seed}
+                            branchShrink={treeStats.branchShrink}
+                            onOpenEvolution={onOpenEvolution}
+                        />
+                    </div>
+
+                    <div className="px-1">
+                        <button
+                            data-testid="edit-categories-btn"
+                            onClick={onOpenCategoryEditor}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-stone-600 hover:bg-stone-200/40 transition-colors font-sans-ui"
+                        >
+                            <Trees className="w-4 h-4" style={{ color: "#8F9779" }} />
+                            Mes branches
+                        </button>
+                    </div>
                 </div>
 
-                <div className="px-4 pb-3">
-                    <TreeWidget
-                        stage={treeStats.stage}
-                        stageKey={treeStats.stageKey}
-                        progress={treeStats.progress}
-                        season={treeStats.season}
-                        leaves={treeStats.leaves}
-                        roots={treeStats.roots}
-                        flowers={treeStats.flowers}
-                        fruits={treeStats.fruits}
-                        messageCount={treeStats.messageCount}
-                        categories={treeStats.categories}
-                        seed={treeStats.seed}
-                        branchShrink={treeStats.branchShrink}
-                        onOpenEvolution={onOpenEvolution}
-                    />
-                </div>
-
-                <div className="px-4 pb-2">
-                    <button
-                        data-testid="edit-categories-btn"
-                        onClick={onOpenCategoryEditor}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-stone-600 hover:bg-stone-200/40 transition-colors font-sans-ui"
-                    >
-                        <Trees className="w-4 h-4" style={{ color: "#8F9779" }} />
-                        Mes branches
-                    </button>
-                </div>
-
-                <div className="mt-auto px-4 pb-5 pt-2 space-y-1.5 border-t border-stone-200/70">
+                {/* Footer */}
+                <div className="shrink-0 px-4 py-3 space-y-1.5 border-t border-stone-200/70">
                     <button
                         data-testid="open-emergency-btn"
                         onClick={onOpenEmergency}
                         className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-colors font-sans-ui"
                         style={{ color: "#9F3645" }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(244, 200, 200, 0.25)")}
+                        onMouseEnter={(e) =>
+                            (e.currentTarget.style.backgroundColor = "rgba(244, 200, 200, 0.25)")
+                        }
                         onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                     >
                         <LifeBuoy className="w-4 h-4" />

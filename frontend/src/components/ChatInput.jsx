@@ -68,7 +68,7 @@ export const ChatInput = ({
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             if (value.trim() && !disabled) {
-                userTouchedChipRef.current = false;
+                // Sticky branch : on ne reset PAS userTouchedChipRef après envoi.
                 onSend();
             }
         }
@@ -135,7 +135,7 @@ export const ChatInput = ({
                         data-testid="send-btn"
                         onClick={() => {
                             if (hasContent && !disabled) {
-                                userTouchedChipRef.current = false;
+                                // Sticky branch : on ne reset PAS la branche après envoi.
                                 onSend();
                             }
                         }}
