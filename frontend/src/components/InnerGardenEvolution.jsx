@@ -62,10 +62,16 @@ export const InnerGardenEvolution = ({
                     <div className="mx-auto w-72 h-80 md:w-96 md:h-[26rem] mt-2">
                         <InnerTreeSvg
                             stageKey={treeStats.stageKey}
+                            progress={treeStats.progress}
+                            season={treeStats.season}
                             leaves={treeStats.leaves}
+                            roots={treeStats.roots}
                             flowers={treeStats.flowers}
                             fruits={treeStats.fruits}
+                            messageCount={treeStats.messageCount}
                             categories={treeStats.categories}
+                            seed={treeStats.seed}
+                            branchShrink={treeStats.branchShrink}
                             showLabels={true}
                             className="w-full h-full"
                         />
@@ -191,9 +197,9 @@ export const InnerGardenEvolution = ({
                             Derniers fruits symboliques
                         </p>
                         <ul className="space-y-2.5" data-testid="symbolic-fruits">
-                            {fruits.slice(0, 5).map((f, i) => (
+                            {fruits.slice(0, 5).map((f) => (
                                 <li
-                                    key={i}
+                                    key={f}
                                     className="flex items-start gap-3 rounded-2xl p-3.5"
                                     style={{ backgroundColor: "rgba(192, 124, 102, 0.07)" }}
                                 >

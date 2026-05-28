@@ -1,48 +1,111 @@
-// Arbre intérieur version 2 — structure par branches catégorisées.
-// - Si `categories` est fourni (3 à 6 entrées avec stats), on dessine N branches
-//   structurantes, chacune avec sa couleur et son étiquette en bout.
-// - Sinon, fallback sur la version générique (canopée organique).
-//
-// Chaque branche grandit visuellement en longueur et en épaisseur selon le nombre
-// de feuilles + fleurs + fruits accumulés sur elle.
+// Arbre intérieur — version organique avec seed utilisateur et palette saisonnière.
+// - Tronc en Bézier doux (courbure perturbée par le seed)
+// - Branches catégorisées en Q-curves avec angles perturbés par le seed
+// - Feuilles en ellipses pivotées, teinte légèrement décalée par le seed
+// - Racines visibles dont l'épaisseur croît avec leur nombre
+// - Palette adaptée à la saison émotionnelle
+// - Smooth growth via heightFactor (10 stades)
+// - Decay visuel : branchShrink ∈ [0, 0.2] réduit la longueur des branches
 
 import { getBranchAngles } from "../lib/categories";
+import { seedRand, seedJitter } from "../lib/userSeed";
 
-const SAGE = "#8F9779";
-const SAGE_DEEP = "#6F7860";
-const TRUNK = "#7A5A45";
+const TRUNK_BASE = "#7A5A45";
 const TRUNK_DEEP = "#5E4533";
-const TERRA = "#C07C66";
-const BLOSSOM = "#E8C7BD";
-const FRUIT = "#A8694F";
 
-const seeded = (i, salt = 0) => {
-    const v = Math.sin((i + 1) * 12.9898 + salt * 78.233) * 43758.5453;
-    return v - Math.floor(v);
+// Palettes par saison (couleurs des feuilles + accent)
+const SEASON_PALETTES = {
+    "Hiver doux": {
+        leafBase: "#A8B0A0",
+        leafAlt: "#94998C",
+        accent: "#C7B89D",
+    },
+    "Printemps": {
+        leafBase: "#9DB585",
+        leafAlt: "#85A06C",
+        accent: "#E8C7BD",
+    },
+    "Été calme": {
+        leafBase: "#8F9779",
+        leafAlt: "#6F7860",
+        accent: "#C07C66",
+    },
+    "Automne lumineux": {
+        leafBase: "#A89568",
+        leafAlt: "#C07C66",
+        accent: "#8F9779",
+    },
 };
 
-// Convertit hex → rgba string avec alpha
+const DEFAULT_PALETTE = SEASON_PALETTES["Été calme"];
+
 const hexToRgba = (hex, a) => {
     const h = hex.replace("#", "");
-    const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
+    const n = parseInt(
+        h.length === 3 ? h.split("").map((c) => c + c).join("") : h,
+        16
+    );
     const r = (n >> 16) & 255;
     const g = (n >> 8) & 255;
     const b = n & 255;
     return `rgba(${r}, ${g}, ${b}, ${a})`;
 };
 
-// Petite feuille colorée
-const Leaf = ({ x, y, rot = 0, size = 3, color = SAGE, delay = 0 }) => (
+// Décale légèrement la teinte d'un hex (h ∈ -30..+30 degrés HSL).
+const shiftHue = (hex, degShift) => {
+    const h = hex.replace("#", "");
+    const n = parseInt(
+        h.length === 3 ? h.split("").map((c) => c + c).join("") : h,
+        16
+    );
+    const r = ((n >> 16) & 255) / 255;
+    const g = ((n >> 8) & 255) / 255;
+    const b = (n & 255) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    if (max === min) return hex;
+    const d = max - min;
+    const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    let hh;
+    if (max === r) hh = ((g - b) / d + (g < b ? 6 : 0));
+    else if (max === g) hh = (b - r) / d + 2;
+    else hh = (r - g) / d + 4;
+    hh = ((hh * 60 + degShift) % 360 + 360) % 360;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs(((hh / 60) % 2) - 1));
+    const m = l - c / 2;
+    let rr, gg, bb;
+    if (hh < 60) [rr, gg, bb] = [c, x, 0];
+    else if (hh < 120) [rr, gg, bb] = [x, c, 0];
+    else if (hh < 180) [rr, gg, bb] = [0, c, x];
+    else if (hh < 240) [rr, gg, bb] = [0, x, c];
+    else if (hh < 300) [rr, gg, bb] = [x, 0, c];
+    else [rr, gg, bb] = [c, 0, x];
+    const toHex = (v) => Math.round((v + m) * 255).toString(16).padStart(2, "0");
+    return `#${toHex(rr)}${toHex(gg)}${toHex(bb)}`;
+};
+
+// Composants atomiques
+const Leaf = ({ x, y, rot = 0, size = 3, color, delay = 0 }) => (
     <g
         transform={`translate(${x} ${y}) rotate(${rot})`}
         className="animate-leaf-grow"
         style={{ animationDelay: `${delay}ms`, transformOrigin: "center" }}
     >
-        <ellipse cx="0" cy="0" rx={size * 1.3} ry={size * 0.65} fill={color} opacity="0.92" />
+        <ellipse cx="0" cy="0" rx={size * 1.4} ry={size * 0.6} fill={color} opacity="0.92" />
+        <line
+            x1={-size * 1.3}
+            y1="0"
+            x2={size * 1.3}
+            y2="0"
+            stroke="#4A5240"
+            strokeWidth="0.3"
+            opacity="0.35"
+        />
     </g>
 );
 
-const Blossom = ({ x, y, size = 2.6, color = TERRA }) => (
+const Blossom = ({ x, y, size = 2.6, color }) => (
     <g transform={`translate(${x} ${y})`}>
         {[0, 72, 144, 216, 288].map((a) => (
             <ellipse
@@ -51,7 +114,7 @@ const Blossom = ({ x, y, size = 2.6, color = TERRA }) => (
                 cy={-size}
                 rx={size * 0.55}
                 ry={size}
-                fill={BLOSSOM}
+                fill="#E8C7BD"
                 transform={`rotate(${a})`}
                 opacity="0.95"
             />
@@ -62,16 +125,47 @@ const Blossom = ({ x, y, size = 2.6, color = TERRA }) => (
 
 const FruitDot = ({ x, y, size = 2.4 }) => (
     <g transform={`translate(${x} ${y})`}>
-        <circle cx="0" cy="0" r={size} fill={FRUIT} />
-        <ellipse cx={-size * 0.3} cy={-size * 0.4} rx={size * 0.3} ry={size * 0.2} fill="#E8A98D" opacity="0.7" />
+        <circle cx="0" cy="0" r={size} fill="#A8694F" />
+        <ellipse
+            cx={-size * 0.3}
+            cy={-size * 0.4}
+            rx={size * 0.3}
+            ry={size * 0.2}
+            fill="#E8A98D"
+            opacity="0.7"
+        />
     </g>
 );
 
-// Dessine une branche catégorisée : tige + lobe de feuilles à la pointe + étiquette
+const renderLeavesOnLobe = (count, cx, cy, lobeR, color, seed, salt) => {
+    return Array.from({ length: count }).map((_, i) => {
+        const angle = seedRand(seed, salt + i) * Math.PI * 2;
+        const r = lobeR * (0.5 + seedRand(seed, salt + i + 100) * 0.6);
+        const lx = cx + Math.cos(angle) * r;
+        const ly = cy + Math.sin(angle) * r * 0.85;
+        const size = 2 + seedRand(seed, salt + i + 200) * 1.1;
+        const rot = seedJitter(seed, salt + i + 300, 35);
+        return (
+            <Leaf
+                key={`l-${salt}-${i}`}
+                x={lx}
+                y={ly}
+                rot={rot}
+                size={size}
+                color={color}
+                delay={i * 60}
+            />
+        );
+    });
+};
+
+// Une branche catégorisée
 const CategoryBranch = ({
-    angle, // degrés
-    length, // longueur visuelle 18→36
-    thickness, // épaisseur 1.4→3.2
+    seed,
+    index,
+    angleBase,
+    length,
+    thickness,
     color,
     label,
     leaves,
@@ -80,87 +174,70 @@ const CategoryBranch = ({
     originX,
     originY,
     showLabel,
+    leafColor,
 }) => {
-    const rad = (angle - 90) * (Math.PI / 180); // 0° = vers le haut
+    // Angle perturbé par le seed (±10°)
+    const angle = angleBase + seedJitter(seed, 100 + index, 10);
+    const rad = ((angle - 90) * Math.PI) / 180;
+
     const tipX = originX + Math.cos(rad) * length;
     const tipY = originY + Math.sin(rad) * length;
-    // Courbe douce : point de contrôle entre origine et pointe, légèrement déporté
-    const midX = originX + Math.cos(rad) * length * 0.55 + Math.cos(rad + Math.PI / 2) * 2;
-    const midY = originY + Math.sin(rad) * length * 0.55 + Math.sin(rad + Math.PI / 2) * 2;
 
-    // Lobe de feuillage : taille basée sur le contenu de la branche
-    const lobeR = 5 + Math.min(leaves, 12) * 0.45;
+    // Point de contrôle Bézier décalé pour un aspect plus organique
+    const curveOffset = 3 + seedRand(seed, 200 + index) * 5;
+    const midX =
+        originX +
+        Math.cos(rad) * length * 0.55 +
+        Math.cos(rad + Math.PI / 2) * curveOffset;
+    const midY =
+        originY +
+        Math.sin(rad) * length * 0.55 +
+        Math.sin(rad + Math.PI / 2) * curveOffset;
+
+    const lobeR = 6 + Math.min(leaves, 14) * 0.55;
     const visibleLeaves = Math.min(leaves, 14);
     const visibleFlowers = Math.min(flowers, 4);
     const visibleFruits = Math.min(fruits, 3);
 
-    // Position de l'étiquette : décalée au-delà du lobe dans la direction de la branche
     const labelDist = lobeR + 5;
     const labelX = tipX + Math.cos(rad) * labelDist;
     const labelY = tipY + Math.sin(rad) * labelDist;
-
-    // Largeur estimée de l'étiquette (chaque caractère ~3.5)
     const labelW = Math.max(label.length * 3.4 + 6, 16);
 
     return (
         <g>
-            {/* Branche */}
             <path
                 d={`M ${originX} ${originY} Q ${midX} ${midY} ${tipX} ${tipY}`}
-                stroke={TRUNK}
+                stroke={TRUNK_BASE}
                 strokeWidth={thickness}
                 fill="none"
                 strokeLinecap="round"
                 opacity="0.95"
             />
-            {/* Lobe de feuillage coloré */}
+            {/* Lobe doux */}
             <ellipse
                 cx={tipX}
                 cy={tipY}
                 rx={lobeR}
                 ry={lobeR * 0.85}
-                fill={hexToRgba(color, 0.18)}
+                fill={hexToRgba(color, 0.16)}
             />
             <ellipse
                 cx={tipX - 1}
                 cy={tipY - 1}
                 rx={lobeR * 0.7}
                 ry={lobeR * 0.6}
-                fill={hexToRgba(color, 0.32)}
+                fill={hexToRgba(color, 0.3)}
             />
 
-            {/* Feuilles individuelles autour du lobe */}
-            {Array.from({ length: visibleLeaves }).map((_, i) => {
-                const t = seeded(i, 17);
-                const t2 = seeded(i, 23);
-                const a = t * Math.PI * 2;
-                const r = lobeR * (0.6 + t2 * 0.6);
-                const lx = tipX + Math.cos(a) * r;
-                const ly = tipY + Math.sin(a) * r * 0.85;
-                const size = 1.8 + seeded(i, 31) * 1.1;
-                const rot = (seeded(i, 37) - 0.5) * 70;
-                return (
-                    <Leaf
-                        key={`bl-${i}`}
-                        x={lx}
-                        y={ly}
-                        rot={rot}
-                        size={size}
-                        color={color}
-                        delay={i * 60}
-                    />
-                );
-            })}
+            {renderLeavesOnLobe(visibleLeaves, tipX, tipY, lobeR, leafColor, seed, 1000 + index * 50)}
 
-            {/* Fleurs */}
             {Array.from({ length: visibleFlowers }).map((_, i) => {
-                const t = seeded(i, 41);
-                const t2 = seeded(i, 43);
-                const a = t * Math.PI * 2;
-                const r = lobeR * (0.3 + t2 * 0.4);
+                const a = seedRand(seed, 2000 + index * 30 + i) * Math.PI * 2;
+                const r = lobeR * (0.3 + seedRand(seed, 2050 + index * 30 + i) * 0.4);
                 return (
                     <Blossom
-                        key={`bf-${i}`}
+                        key={`bf-${index}-${i}`}
                         x={tipX + Math.cos(a) * r}
                         y={tipY + Math.sin(a) * r * 0.8}
                         size={2.4}
@@ -169,14 +246,12 @@ const CategoryBranch = ({
                 );
             })}
 
-            {/* Fruits */}
             {Array.from({ length: visibleFruits }).map((_, i) => {
-                const t = seeded(i, 53);
-                const a = t * Math.PI * 2;
+                const a = seedRand(seed, 3000 + index * 30 + i) * Math.PI * 2;
                 const r = lobeR * 0.45;
                 return (
                     <FruitDot
-                        key={`bfr-${i}`}
+                        key={`bfr-${index}-${i}`}
                         x={tipX + Math.cos(a) * r}
                         y={tipY + Math.sin(a) * r * 0.8 + 1.5}
                         size={2.2}
@@ -184,7 +259,6 @@ const CategoryBranch = ({
                 );
             })}
 
-            {/* Étiquette colorée */}
             {showLabel && (
                 <g
                     transform={`translate(${labelX} ${labelY})`}
@@ -220,58 +294,78 @@ const CategoryBranch = ({
 
 export const InnerTreeSvg = ({
     stageKey = "seed",
+    progress = 5,
+    season = "Hiver doux",
     leaves = 0,
+    roots = 0,
     flowers = 0,
     fruits = 0,
-    categories = null, // [{id, label, color, leaves, flowers, fruits}]
+    messageCount = 0,
+    categories = null,
     showLabels = true,
+    branchShrink = 0,
+    seed = "anon",
     className = "",
     breathe = true,
 }) => {
+    const palette = SEASON_PALETTES[season] || DEFAULT_PALETTE;
+    // Teinte des feuilles légèrement décalée par le seed (-10° à +10°)
+    const leafColor = shiftHue(palette.leafBase, seedJitter(seed, 10, 10));
+    const altLeafColor = shiftHue(palette.leafAlt, seedJitter(seed, 11, 10));
+
     const hasCategories = Array.isArray(categories) && categories.length >= 1;
 
-    // Tronc : même logique que la version précédente
-    const trunkPath =
-        stageKey === "seed"
-            ? null
-            : stageKey === "sprout"
-              ? "M59 124 Q 60 108 60 92"
-              : stageKey === "growing"
-                ? "M57 125 Q 60 100 60 70"
-                : "M55 125 Q 60 92 60 60";
+    // heightFactor lisse [0, 1] basé sur la progression
+    const heightFactor = Math.max(0, Math.min(1, (progress - 5) / 90));
 
-    const trunkWidth =
-        stageKey === "sprout" ? 2.2 : stageKey === "growing" ? 3.4 : 4.6;
+    // Apex du tronc : descend (y plus grand) au début, monte (y plus petit) avec la progression
+    const trunkBaseY = 125;
+    const trunkApexY = trunkBaseY - 8 - heightFactor * 75;
 
-    // Point d'origine des branches (apex du tronc selon le stade)
-    const branchOriginY =
-        stageKey === "sprout" ? 92 : stageKey === "growing" ? 70 : 60;
-    const branchOriginX = stageKey === "alive" ? 60 : 60;
+    // Courbure du tronc : perturbée par le seed (±4px sur l'axe X) pour un aspect organique
+    const trunkCurveX = seedJitter(seed, 1, 4);
+    const trunkMidX = 60 + trunkCurveX;
+    const trunkMidY = trunkBaseY - 8 - heightFactor * 38;
 
-    // Si on a des catégories, on dessine les branches structurantes
+    // Épaisseur du tronc : s'épaissit tous les 10 messages
+    const trunkThickness = Math.min(8, 2.4 + Math.floor(messageCount / 10) * 0.6 + heightFactor * 2.2);
+
+    // Origine des branches (point d'apex du tronc)
+    const branchOriginY = trunkApexY + 4;
+    const branchOriginX = 60;
+
     const angles = hasCategories ? getBranchAngles(categories.length) : [];
 
-    // Sinon, fallback : on garde la canopée générique
-    const showGenericCanopy = !hasCategories && stageKey !== "seed";
+    // Stade graine : on dessine juste la graine sans tronc
+    const isSeed = stageKey === "seed" || heightFactor < 0.05;
+    const isSeedAwake = stageKey === "seed-awake";
+
+    // Décay : raccourcissement des branches
+    const lengthMul = 1 - (branchShrink || 0);
+
+    // Épaisseur des racines : croît avec leur nombre
+    const rootThickness = 1.1 + Math.min(roots, 12) * 0.13;
+    const rootOpacity = 0.45 + Math.min(roots, 10) * 0.04;
 
     return (
         <svg
             viewBox="0 0 120 140"
             data-tree-svg="true"
             data-categories={hasCategories ? categories.length : 0}
+            data-stage={stageKey}
             className={`${className} ${breathe ? "animate-breathe" : ""}`}
-            aria-label="Ton arbre intérieur"
+            aria-label={`Ton arbre intérieur — ${stageKey}`}
             role="img"
         >
             <defs>
-                <radialGradient id="ground-glow-2" cx="50%" cy="100%" r="60%">
-                    <stop offset="0%" stopColor="#E8DFCB" stopOpacity="0.6" />
-                    <stop offset="100%" stopColor="#E8DFCB" stopOpacity="0" />
+                <radialGradient id="ground-glow-3" cx="50%" cy="100%" r="60%">
+                    <stop offset="0%" stopColor={palette.accent} stopOpacity="0.35" />
+                    <stop offset="100%" stopColor={palette.accent} stopOpacity="0" />
                 </radialGradient>
             </defs>
 
-            {/* Halo de sol */}
-            <ellipse cx="60" cy="128" rx="50" ry="6" fill="url(#ground-glow-2)" />
+            {/* Halo de sol coloré par la saison */}
+            <ellipse cx="60" cy="128" rx="50" ry="6" fill="url(#ground-glow-3)" />
 
             {/* Sol */}
             <line
@@ -284,180 +378,155 @@ export const InnerTreeSvg = ({
                 strokeDasharray="2 3"
             />
 
-            {/* Racines à partir de la pousse */}
-            {stageKey !== "seed" && (
-                <g stroke={TRUNK_DEEP} strokeWidth="1.3" fill="none" strokeLinecap="round" opacity="0.55">
-                    <path d="M60 125 Q 50 132 38 134" />
-                    <path d="M60 125 Q 70 132 82 134" />
-                    <path d="M60 125 Q 60 134 58 138" />
-                    {stageKey !== "sprout" && (
+            {/* Racines : s'épaississent avec le nombre de racines */}
+            {!isSeed && (
+                <g
+                    stroke={TRUNK_DEEP}
+                    strokeWidth={rootThickness}
+                    fill="none"
+                    strokeLinecap="round"
+                    opacity={rootOpacity}
+                >
+                    <path d={`M60 125 Q ${48 + seedJitter(seed, 21, 2)} 132 ${36 + seedJitter(seed, 22, 3)} 135`} />
+                    <path d={`M60 125 Q ${72 + seedJitter(seed, 23, 2)} 132 ${84 + seedJitter(seed, 24, 3)} 135`} />
+                    <path d={`M60 125 Q 60 134 ${58 + seedJitter(seed, 25, 2)} 138`} />
+                    {roots > 2 && (
                         <>
-                            <path d="M60 125 Q 44 130 30 131" />
-                            <path d="M60 125 Q 76 130 90 131" />
+                            <path d="M60 125 Q 44 130 28 131" opacity="0.7" />
+                            <path d="M60 125 Q 76 130 92 131" opacity="0.7" />
+                        </>
+                    )}
+                    {roots > 5 && (
+                        <>
+                            <path d="M60 125 Q 40 134 22 137" opacity="0.55" />
+                            <path d="M60 125 Q 80 134 98 137" opacity="0.55" />
                         </>
                     )}
                 </g>
             )}
 
-            {/* Tronc */}
-            {trunkPath ? (
-                <>
-                    <path
-                        d={trunkPath}
-                        stroke={TRUNK}
-                        strokeWidth={trunkWidth}
-                        fill="none"
-                        strokeLinecap="round"
-                    />
-                    <path
-                        d={trunkPath}
-                        stroke={TRUNK_DEEP}
-                        strokeWidth={trunkWidth * 0.4}
-                        fill="none"
-                        strokeLinecap="round"
-                        opacity="0.35"
-                        transform="translate(-1 0)"
-                    />
-                </>
-            ) : (
+            {/* Graine endormie / éveillée */}
+            {isSeed && (
                 <g>
-                    <ellipse cx="60" cy="123" rx="6" ry="4" fill={TRUNK} />
-                    <path
-                        d="M60 119 Q 62 115 60 112"
-                        stroke={SAGE}
-                        strokeWidth="1.4"
-                        fill="none"
-                        strokeLinecap="round"
-                        opacity="0.6"
-                    />
+                    <ellipse cx="60" cy="124" rx="5.5" ry="3.5" fill={TRUNK_BASE} />
+                    <ellipse cx="58" cy="123.5" rx="1.4" ry="0.8" fill={TRUNK_DEEP} opacity="0.6" />
+                    {isSeedAwake && (
+                        <path
+                            d="M60 121 Q 61 117 60 113"
+                            stroke={leafColor}
+                            strokeWidth="1.4"
+                            fill="none"
+                            strokeLinecap="round"
+                            opacity="0.85"
+                        />
+                    )}
                 </g>
             )}
 
-            {/* Branches catégorisées (uniquement si l'arbre a au moins atteint le stade pousse) */}
-            {hasCategories && stageKey !== "seed" &&
+            {/* Tronc Bézier organique */}
+            {!isSeed && (
+                <>
+                    <path
+                        d={`M 60 ${trunkBaseY} Q ${trunkMidX} ${trunkMidY} ${branchOriginX} ${trunkApexY}`}
+                        stroke={TRUNK_BASE}
+                        strokeWidth={trunkThickness}
+                        fill="none"
+                        strokeLinecap="round"
+                    />
+                    {/* Ombre du tronc */}
+                    <path
+                        d={`M 60 ${trunkBaseY} Q ${trunkMidX - 0.8} ${trunkMidY} ${branchOriginX - 0.8} ${trunkApexY}`}
+                        stroke={TRUNK_DEEP}
+                        strokeWidth={trunkThickness * 0.4}
+                        fill="none"
+                        strokeLinecap="round"
+                        opacity="0.4"
+                    />
+                </>
+            )}
+
+            {/* Halo doux derrière la canopée pour donner du volume */}
+            {hasCategories && !isSeed && categories.length > 0 && (
+                <circle
+                    cx={branchOriginX + seedJitter(seed, 50, 3)}
+                    cy={branchOriginY - 6}
+                    r={14 + heightFactor * 18}
+                    fill={hexToRgba(palette.leafBase, 0.10)}
+                />
+            )}
+
+
+            {/* Branches catégorisées */}
+            {hasCategories && !isSeed &&
                 categories.map((cat, i) => {
+                    // Branches initiales (isInitial) → toujours visibles.
+                    // Branches custom ajoutées après → invisibles si tagged_count < seuil.
+                    const taggedCount = cat.taggedCount || cat.tagged_count || 0;
+                    const isInitial = cat.isInitial !== false; // par défaut true
+                    if (!isInitial && taggedCount < 5) return null;
+
                     const angle = angles[i];
-                    const total = cat.leaves + cat.flowers + cat.fruits;
-                    // Longueur 22-38, épaisseur 1.6-3.0
-                    const length = 22 + Math.min(total, 18) * 0.9;
-                    const thickness = 1.6 + Math.min(total, 14) * 0.1;
+                    const total = (cat.leaves || 0) + (cat.flowers || 0) + (cat.fruits || 0);
+                    const baseLen = 18 + heightFactor * 14 + Math.min(total, 18) * 0.85;
+                    const length = baseLen * lengthMul;
+                    const thickness = 1.4 + heightFactor * 0.7 + Math.min(total, 14) * 0.09;
                     return (
                         <CategoryBranch
                             key={cat.id}
-                            angle={angle}
+                            seed={seed}
+                            index={i}
+                            angleBase={angle}
                             length={length}
                             thickness={thickness}
                             color={cat.color}
                             label={cat.label}
-                            leaves={cat.leaves}
-                            flowers={cat.flowers}
-                            fruits={cat.fruits}
+                            leaves={cat.leaves || 0}
+                            flowers={cat.flowers || 0}
+                            fruits={cat.fruits || 0}
                             originX={branchOriginX}
                             originY={branchOriginY}
-                            showLabel={showLabels}
+                            showLabel={showLabels && (isInitial || taggedCount >= 5)}
+                            leafColor={leafColor}
                         />
                     );
                 })}
 
-            {/* Fallback canopée générique si pas de catégories */}
-            {showGenericCanopy && (
-                <g>
-                    {stageKey === "sprout" && (
-                        <ellipse cx="60" cy="89" rx="10" ry="7" fill={SAGE} opacity="0.85" />
-                    )}
-                    {stageKey === "growing" && (
-                        <>
-                            <circle cx="60" cy="64" r="20" fill={SAGE} opacity="0.92" />
-                            <circle cx="42" cy="68" r="11" fill={SAGE} opacity="0.78" />
-                            <circle cx="78" cy="68" r="11" fill={SAGE} opacity="0.78" />
-                        </>
-                    )}
-                    {stageKey === "alive" && (
-                        <>
-                            <circle cx="60" cy="48" r="26" fill={SAGE} opacity="0.92" />
-                            <circle cx="34" cy="56" r="16" fill={SAGE} opacity="0.85" />
-                            <circle cx="86" cy="56" r="16" fill={SAGE} opacity="0.85" />
-                            <circle cx="60" cy="30" r="12" fill={SAGE} opacity="0.88" />
-                        </>
-                    )}
-                </g>
-            )}
+            {/* Feuilles du tronc (messages sans catégorie ou tronc général) */}
+            {!isSeed && leaves > 0 &&
+                renderLeavesOnLobe(
+                    Math.min(leaves, hasCategories ? 6 : 14),
+                    branchOriginX,
+                    branchOriginY - 4,
+                    hasCategories ? 5 : 14,
+                    altLeafColor,
+                    seed,
+                    9000
+                )}
 
-            {/* Feuilles "tronc" (messages sans catégorie) — petites feuilles le long du tronc */}
-            {!hasCategories && stageKey !== "seed" &&
-                Array.from({ length: Math.min(leaves, 18) }).map((_, i) => {
-                    const t = seeded(i, 5);
-                    const t2 = seeded(i, 9);
-                    const a = t * Math.PI * 2;
-                    const cx = 60;
-                    const cy = branchOriginY - 4;
-                    const r = 16 + t2 * 8;
-                    return (
-                        <Leaf
-                            key={`tl-${i}`}
-                            x={cx + Math.cos(a) * r}
-                            y={cy + Math.sin(a) * r * 0.7}
-                            rot={(seeded(i, 13) - 0.5) * 70}
-                            size={2.1 + seeded(i, 21) * 1.1}
-                            color={seeded(i, 27) > 0.6 ? SAGE_DEEP : SAGE}
-                            delay={i * 70}
-                        />
-                    );
-                })}
-
-            {/* Feuilles "tronc" en plus quand on a des catégories : feuillettes
-                discrètes près du tronc pour les messages sans tag */}
-            {hasCategories && leaves > 0 && stageKey !== "seed" &&
-                Array.from({ length: Math.min(leaves, 6) }).map((_, i) => {
-                    const t = seeded(i, 91);
-                    const t2 = seeded(i, 93);
-                    const a = t * Math.PI * 2;
-                    const yOffset = 70 + t2 * 30;
-                    const xOffset = Math.cos(a) * 4;
-                    return (
-                        <Leaf
-                            key={`gtl-${i}`}
-                            x={60 + xOffset}
-                            y={yOffset}
-                            rot={(seeded(i, 95) - 0.5) * 60}
-                            size={1.8}
-                            color={SAGE_DEEP}
-                            delay={i * 70}
-                        />
-                    );
-                })}
-
-            {/* Fleurs / fruits "tronc" sans catégorie */}
-            {!hasCategories && stageKey !== "seed" &&
+            {/* Fleurs / fruits du tronc */}
+            {!isSeed && !hasCategories && flowers > 0 &&
                 Array.from({ length: Math.min(flowers, 6) }).map((_, i) => {
-                    const t = seeded(i, 101);
-                    const t2 = seeded(i, 103);
-                    const a = t * Math.PI * 2;
-                    const cx = 60;
-                    const cy = branchOriginY - 6;
-                    const r = 10 + t2 * 8;
+                    const a = seedRand(seed, 6000 + i) * Math.PI * 2;
+                    const r = 8 + seedRand(seed, 6050 + i) * 8;
                     return (
                         <Blossom
                             key={`tf-${i}`}
-                            x={cx + Math.cos(a) * r}
-                            y={cy + Math.sin(a) * r * 0.7}
-                            size={2.6}
+                            x={branchOriginX + Math.cos(a) * r}
+                            y={branchOriginY - 4 + Math.sin(a) * r * 0.7}
+                            size={2.5}
+                            color={palette.accent}
                         />
                     );
                 })}
-            {!hasCategories && stageKey !== "seed" &&
+            {!isSeed && !hasCategories && fruits > 0 &&
                 Array.from({ length: Math.min(fruits, 5) }).map((_, i) => {
-                    const t = seeded(i, 111);
-                    const t2 = seeded(i, 113);
-                    const a = t * Math.PI * 2;
-                    const cx = 60;
-                    const cy = branchOriginY - 2;
-                    const r = 10 + t2 * 6;
+                    const a = seedRand(seed, 7000 + i) * Math.PI * 2;
+                    const r = 8 + seedRand(seed, 7050 + i) * 6;
                     return (
                         <FruitDot
                             key={`tfr-${i}`}
-                            x={cx + Math.cos(a) * r}
-                            y={cy + Math.sin(a) * r * 0.7 + 1}
+                            x={branchOriginX + Math.cos(a) * r}
+                            y={branchOriginY - 2 + Math.sin(a) * r * 0.7}
                             size={2.4}
                         />
                     );

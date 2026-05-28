@@ -84,7 +84,10 @@ export const Sidebar = ({
                         roots={treeStats.roots}
                         flowers={treeStats.flowers}
                         fruits={treeStats.fruits}
+                        messageCount={treeStats.messageCount}
                         categories={treeStats.categories}
+                        seed={treeStats.seed}
+                        branchShrink={treeStats.branchShrink}
                         onOpenEvolution={onOpenEvolution}
                     />
                 </div>

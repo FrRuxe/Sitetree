@@ -71,10 +71,16 @@ export const ChatArea = ({
                     >
                         <InnerTreeSvg
                             stageKey={treeStats.stageKey}
+                            progress={treeStats.progress}
+                            season={treeStats.season}
                             leaves={treeStats.leaves}
+                            roots={treeStats.roots}
                             flowers={treeStats.flowers}
                             fruits={treeStats.fruits}
+                            messageCount={treeStats.messageCount}
                             categories={treeStats.categories}
+                            seed={treeStats.seed}
+                            branchShrink={treeStats.branchShrink}
                             showLabels={false}
                             breathe={false}
                         />
@@ -100,10 +106,16 @@ export const ChatArea = ({
                             <div className="mx-auto w-72 h-80 md:w-96 md:h-[26rem]">
                                 <InnerTreeSvg
                                     stageKey={treeStats.stageKey}
+                                    progress={treeStats.progress}
+                                    season={treeStats.season}
                                     leaves={treeStats.leaves}
+                                    roots={treeStats.roots}
                                     flowers={treeStats.flowers}
                                     fruits={treeStats.fruits}
+                                    messageCount={treeStats.messageCount}
                                     categories={treeStats.categories}
+                                    seed={treeStats.seed}
+                                    branchShrink={treeStats.branchShrink}
                                     showLabels={true}
                                     className="w-full h-full"
                                 />

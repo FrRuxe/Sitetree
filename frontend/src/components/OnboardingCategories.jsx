@@ -23,6 +23,8 @@ export const OnboardingCategories = ({
                 color: c.color,
                 selected: true,
                 custom: !DEFAULT_CATEGORIES.find((d) => d.id === c.id),
+                isInitial: c.isInitial !== false,
+                existingStats: c,
             }));
         }
         return DEFAULT_CATEGORIES.map((c) => ({
@@ -31,6 +33,7 @@ export const OnboardingCategories = ({
             color: c.color,
             selected: c.preselected,
             custom: false,
+            isInitial: true,
         }));
     });
 

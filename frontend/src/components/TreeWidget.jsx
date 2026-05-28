@@ -10,7 +10,10 @@ export const TreeWidget = ({
     roots,
     flowers,
     fruits,
+    messageCount,
     categories,
+    seed,
+    branchShrink,
     onOpenEvolution,
 }) => {
     return (
@@ -23,10 +26,16 @@ export const TreeWidget = ({
             <div className="w-full h-44 mb-3 flex items-end justify-center">
                 <InnerTreeSvg
                     stageKey={stageKey}
+                    progress={progress}
+                    season={season}
                     leaves={leaves}
+                    roots={roots}
                     flowers={flowers}
                     fruits={fruits}
+                    messageCount={messageCount}
                     categories={categories}
+                    seed={seed}
+                    branchShrink={branchShrink}
                     showLabels={false}
                     className="w-full h-full"
                 />
