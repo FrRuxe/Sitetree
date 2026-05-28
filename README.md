@@ -45,9 +45,9 @@ détection de crise locale (sécurité supplémentaire), composants SVG de l'arb
 centralise le prompt système), détection de branche par mots-clés, logique de
 croissance de l'arbre, détection de crise serveur.
 
-**LLM** : LM Studio servant un modèle compatible OpenAI sur
-`http://localhost:1234/v1`. Tu peux remplacer par n'importe quel autre serveur
-(Ollama, vLLM, llama.cpp avec `--openai`, etc.).
+**LLM** : Deux options au choix dans les Paramètres locaux :
+- **LM Studio** (par défaut) — servant un modèle OpenAI-compatible sur `http://localhost:1234/v1`. Tu peux remplacer par n'importe quel autre serveur (Ollama, vLLM, llama.cpp avec `--openai`, etc.).
+- **WebLLM** — modèle qui tourne **100% dans ton navigateur** via WebGPU (`@mlc-ai/web-llm`). Le modèle est téléchargé une fois (~1-2 Go) et mis en cache navigateur. **Aucun backend n'est requis pour le chat dans ce mode.** Compatible Chrome/Edge/Brave récents. Modèle par défaut : `gemma-3-4b-it-q4f16_1-MLC`. Tu peux changer l'ID dans les paramètres dès qu'un build Gemma 4 E4B sera publié.
 
 ---
 
@@ -120,6 +120,31 @@ sous les réponses concernées.
 LLM_BASE_URL="http://localhost:1234/v1"
 LLM_MODEL="gemma-3-4b-it"
 LLM_API_KEY="lm-studio"
+
+### Option B : Tout-en-navigateur avec WebLLM (Gemma via WebGPU)
+
+Si tu ne veux **pas** lancer LM Studio, tu peux utiliser WebLLM, qui exécute le
+modèle directement dans le navigateur via WebGPU. Aucun backend n'est sollicité
+pour le chat dans ce mode (le backend FastAPI sert uniquement la détection de
+branche et de crise — purement local et synchrone).
+
+1. Ouvre l'app dans **Chrome**, **Edge** ou **Brave** (récents).
+2. Va dans **Paramètres locaux** (engrenage dans la sidebar).
+3. Dans **Moteur d'intelligence**, clique **WebLLM (navigateur)**.
+4. Le modèle par défaut est `gemma-3-4b-it-q4f16_1-MLC`. Tu peux le remplacer
+   par n'importe quel ID publié par @mlc-ai/web-llm (liste sur
+   https://github.com/mlc-ai/web-llm). Quand Gemma 4 E4B sera officiellement
+   publié, mets simplement son ID dans le champ.
+5. Clique **Initialiser l'IA locale**. Premier lancement : téléchargement du
+   modèle (~1-2 Go selon la quantization), suivi en direct par la barre de
+   progression. Les fois suivantes, le modèle est instantané (cache navigateur).
+6. Une fois prêt, tous tes messages partent vers le modèle local du navigateur.
+   Aucune donnée ne quitte ta machine.
+
+Tu peux à tout moment décharger le moteur ou rebasculer vers LM Studio depuis
+les mêmes paramètres.
+
+
 LLM_TIMEOUT="60"
 CORS_ORIGINS="*"
 ```

@@ -126,8 +126,10 @@ function App() {
         const cfg = safeLoad(LLM_KEY);
         return {
             enabled: cfg?.enabled ?? true,
+            provider: cfg?.provider || "lmstudio", // "lmstudio" | "webllm"
             baseUrl: cfg?.baseUrl || "http://localhost:1234/v1",
             model: cfg?.model || "gemma-3-4b-it",
+            webllmModel: cfg?.webllmModel || "gemma-3-4b-it-q4f16_1-MLC",
         };
     });
 
@@ -382,11 +384,16 @@ function App() {
                 }));
             };
 
-            streamChat(
+            const useWebLLM =
+                llmConfig.provider === "webllm" && isEngineReady(llmConfig.webllmModel);
+            const streamFn = useWebLLM ? streamChatWebLLM : streamChat;
+
+            streamFn(
                 {
                     messages: history,
                     mode: conv?.mode || "free",
                     categories: categories || [],
+                    activeBranchId: conv?.branchId || null,
                     base_url: llmConfig.baseUrl,
                     model: llmConfig.model,
                 },

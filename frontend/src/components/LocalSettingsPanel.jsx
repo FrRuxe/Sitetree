@@ -4,6 +4,7 @@ import {
     Server, CircleCheck, CircleX, Loader2,
 } from "lucide-react";
 import { fetchLLMConfig } from "../lib/api";
+import { WebLLMSection } from "./WebLLMSection";
 
 const Toggle = ({ checked, onChange, disabled, testid }) => (
     <button
@@ -158,55 +159,103 @@ export const LocalSettingsPanel = ({
                 </div>
 
                 <div className="px-6 py-4">
-                    {/* LLM local */}
-                    <p className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui mb-1">
-                        Intelligence locale
+                    {/* Provider LLM */}
+                    <p className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui mb-2">
+                        Moteur d'intelligence
                     </p>
-                    <Row
-                        icon={Cpu}
-                        title="Utiliser le LLM local"
-                        description="Quand actif, les réponses sont générées par ton propre modèle (LM Studio / Gemma). Sinon, mode démo avec réponses simulées."
+                    <div
+                        className="rounded-2xl p-1 grid grid-cols-2 gap-1 mb-3"
+                        style={{ backgroundColor: "rgba(143, 151, 121, 0.10)" }}
                     >
-                        <Toggle
-                            checked={llmConfig?.enabled ?? true}
-                            onChange={(v) =>
-                                onUpdateLlmConfig({ ...llmConfig, enabled: v })
+                        <button
+                            data-testid="provider-lmstudio"
+                            onClick={() =>
+                                onUpdateLlmConfig({ ...llmConfig, provider: "lmstudio" })
                             }
-                            testid="toggle-llm"
-                        />
-                    </Row>
-
-                    <div className="py-3 border-b border-stone-200/70 space-y-2">
-                        <label className="block">
-                            <span className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui">
-                                URL du serveur
-                            </span>
-                            <input
-                                data-testid="llm-base-url"
-                                value={localBaseUrl}
-                                onChange={(e) => updateField("baseUrl", e.target.value)}
-                                placeholder="http://localhost:1234/v1"
-                                className="mt-1 w-full bg-stone-100/60 rounded-xl px-3 py-2 text-sm font-mono outline-none border border-stone-200 focus:border-stone-400"
-                            />
-                        </label>
-                        <label className="block">
-                            <span className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui">
-                                Nom du modèle
-                            </span>
-                            <input
-                                data-testid="llm-model"
-                                value={localModel}
-                                onChange={(e) => updateField("model", e.target.value)}
-                                placeholder="gemma-3-4b-it"
-                                className="mt-1 w-full bg-stone-100/60 rounded-xl px-3 py-2 text-sm font-mono outline-none border border-stone-200 focus:border-stone-400"
-                            />
-                        </label>
-                        <p className="text-[11px] text-stone-500 italic font-sans-ui leading-relaxed">
-                            Dans LM Studio, charge un modèle (par ex. Gemma 3 4B), va dans
-                            l'onglet Server, active CORS, puis démarre le serveur local.
-                        </p>
-                        <LlmConnectionTest baseUrl={localBaseUrl} model={localModel} />
+                            className={`flex items-center justify-center gap-2 py-2 rounded-xl text-sm transition-colors font-sans-ui ${
+                                (llmConfig?.provider || "lmstudio") === "lmstudio"
+                                    ? "bg-stone-50 text-stone-800 shadow-sm"
+                                    : "text-stone-600"
+                            }`}
+                        >
+                            <Server className="w-3.5 h-3.5" />
+                            LM Studio
+                        </button>
+                        <button
+                            data-testid="provider-webllm"
+                            onClick={() =>
+                                onUpdateLlmConfig({ ...llmConfig, provider: "webllm" })
+                            }
+                            className={`flex items-center justify-center gap-2 py-2 rounded-xl text-sm transition-colors font-sans-ui ${
+                                llmConfig?.provider === "webllm"
+                                    ? "bg-stone-50 text-stone-800 shadow-sm"
+                                    : "text-stone-600"
+                            }`}
+                        >
+                            <Cpu className="w-3.5 h-3.5" />
+                            WebLLM (navigateur)
+                        </button>
                     </div>
+                    <p className="text-[11px] text-stone-500 italic font-sans-ui mb-3 leading-relaxed">
+                        {llmConfig?.provider === "webllm"
+                            ? "Le modèle tourne entièrement dans ton navigateur via WebGPU. Aucune donnée n'est envoyée. Premier chargement ~1-2 Go selon le modèle."
+                            : "LM Studio sert un modèle local sur ta machine via une API OpenAI-compatible. Le backend relaie les appels."}
+                    </p>
+
+                    {llmConfig?.provider === "webllm" ? (
+                        <WebLLMSection
+                            llmConfig={llmConfig}
+                            onUpdate={onUpdateLlmConfig}
+                        />
+                    ) : (
+                        <>
+                            <Row
+                                icon={Cpu}
+                                title="Utiliser le LLM local"
+                                description="Quand actif, les réponses sont générées par ton propre modèle (LM Studio). Sinon, mode démo avec réponses simulées."
+                            >
+                                <Toggle
+                                    checked={llmConfig?.enabled ?? true}
+                                    onChange={(v) =>
+                                        onUpdateLlmConfig({ ...llmConfig, enabled: v })
+                                    }
+                                    testid="toggle-llm"
+                                />
+                            </Row>
+
+                            <div className="py-3 border-b border-stone-200/70 space-y-2">
+                                <label className="block">
+                                    <span className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui">
+                                        URL du serveur
+                                    </span>
+                                    <input
+                                        data-testid="llm-base-url"
+                                        value={localBaseUrl}
+                                        onChange={(e) => updateField("baseUrl", e.target.value)}
+                                        placeholder="http://localhost:1234/v1"
+                                        className="mt-1 w-full bg-stone-100/60 rounded-xl px-3 py-2 text-sm font-mono outline-none border border-stone-200 focus:border-stone-400"
+                                    />
+                                </label>
+                                <label className="block">
+                                    <span className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui">
+                                        Nom du modèle
+                                    </span>
+                                    <input
+                                        data-testid="llm-model"
+                                        value={localModel}
+                                        onChange={(e) => updateField("model", e.target.value)}
+                                        placeholder="gemma-3-4b-it"
+                                        className="mt-1 w-full bg-stone-100/60 rounded-xl px-3 py-2 text-sm font-mono outline-none border border-stone-200 focus:border-stone-400"
+                                    />
+                                </label>
+                                <p className="text-[11px] text-stone-500 italic font-sans-ui leading-relaxed">
+                                    Dans LM Studio, charge un modèle, va dans Server, active
+                                    CORS, puis démarre le serveur local.
+                                </p>
+                                <LlmConnectionTest baseUrl={localBaseUrl} model={localModel} />
+                            </div>
+                        </>
+                    )}
 
                     {/* Stockage */}
                     <p className="text-xs uppercase tracking-wider text-stone-500 font-sans-ui mb-2 mt-4">
